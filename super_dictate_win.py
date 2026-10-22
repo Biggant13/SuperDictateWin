@@ -246,6 +246,7 @@ def transcribe_and_paste():
             print("[SuperDictate] Пустой результат.")
             return
 
+        text = text + " "
         print(f"[SuperDictate] 📝 {text}")
         pyperclip.copy(text)
         time.sleep(0.05)
