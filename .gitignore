@@ -4,7 +4,6 @@ venv/
 
 # Сборка PyInstaller
 build/
-dist/
 *.spec.bak
 
 # Модель (слишком большая для Git)
