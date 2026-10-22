@@ -1,0 +1,8 @@
+onnx-asr[cpu,hub]
+sounddevice
+pynput
+pyperclip
+pystray
+pillow
+huggingface_hub
+numpy

@@ -1,0 +1,28 @@
+# Виртуальное окружение
+venv/
+.venv/
+
+# Сборка PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Модель (слишком большая для Git)
+gigaam-v3-e2e-rnnt-onnx/
+
+# Кэш Python
+__pycache__/
+*.pyc
+
+# Логи и временные файлы
+*.log
+meetings/
+dictation_*.txt
+
+# Пользовательский конфиг (у каждого он свой)
+config.json
+
+venv-convert/
+models/
+*.bin
+*.dll
