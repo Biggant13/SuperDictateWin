@@ -11,6 +11,8 @@ DEFAULT_CONFIG = {
     "model_path": "./gigaam-v3-e2e-rnnt-onnx",
     "language": "ru",
     "overlay_position": "bottom",
+    "beep_volume": 0.05,  # Громкость от 0.0 до 1.0 (0.05 — очень тихо)
+    "sound_enabled": True,
 }
 
 def load_config():
