@@ -41,7 +41,7 @@ hiddenimports += [
 ]
 
 a = Analysis(
-    ['super_dictate_win.py'],
+    ['main.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,
