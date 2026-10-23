@@ -8,7 +8,7 @@ from core.audio import AudioRecorder
 from core.transcriber import Transcriber
 from core.ui import RecordingOverlay
 from core.tray import start_tray
-from core.utils import parse_hotkey, normalize_key
+from core.utils import parse_hotkey, normalize_key, get_context
 
 def main():
     print("=" * 50)
@@ -38,13 +38,18 @@ def main():
     def on_release(key):
         nk = normalize_key(key)
         pressed_keys.discard(nk)
+        
         if audio.recording and nk in hotkey_set:
             audio.stop()
-            # Запускаем обработку в отдельном потоке, чтобы не блокировать клавиатуру
             audio_data = audio.get_audio()
+            
+            # 1. Считываем контекст (быстро, ~40мс)
+            has_selection, prev_char = get_context()
+            
+            # 2. Запускаем распознавание
             threading.Thread(
                 target=transcriber.transcribe_and_paste, 
-                args=(audio_data, processing_flag), 
+                args=(audio_data, has_selection, prev_char, processing_flag), 
                 daemon=True
             ).start()
 

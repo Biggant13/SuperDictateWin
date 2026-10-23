@@ -3,7 +3,7 @@ import time
 import numpy as np
 import onnx_asr
 import pyperclip
-from .utils import is_hallucination, press_ctrl_v
+from .utils import format_text, is_hallucination, press_ctrl_v
 
 class Transcriber:
     def __init__(self, config):
@@ -29,32 +29,28 @@ class Transcriber:
             self.model = onnx_asr.load_model(self.model_name)
         print("[Transcriber] Модель готова.")
 
-    def transcribe_and_paste(self, audio, processing_flag):
+    def transcribe_and_paste(self, audio, has_selection, prev_char, processing_flag):
         if processing_flag[0]:
             return
         processing_flag[0] = True
         
         try:
             if audio is None or len(audio) < 16000 * 0.3:
-                print("[Transcriber] Слишком короткая запись.")
                 return
 
             rms = float(np.sqrt(np.mean(audio ** 2)))
             if rms < 0.003:
-                print(f"[Transcriber] Тишина (RMS={rms:.5f}) — пропускаю.")
                 return
 
             print("[Transcriber] 🔄 Распознавание...")
-            text = self.model.recognize(audio).strip()
+            raw_text = self.model.recognize(audio).strip()
 
-            if not text:
-                print("[Transcriber] Пустой результат.")
-                return
-            if is_hallucination(text):
-                print(f"[Transcriber] Галлюцинация: {text!r}")
+            if not raw_text or is_hallucination(raw_text):
                 return
 
-            text = text + " " # Тот самый пробел
+            # Применяем умное форматирование с учетом контекста
+            text = format_text(raw_text, has_selection=has_selection, context_data=prev_char)
+            
             print(f"[Transcriber] 📝 {text}")
             
             pyperclip.copy(text)
