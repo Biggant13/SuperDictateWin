@@ -4,6 +4,7 @@ import numpy as np
 import onnx_asr
 import pyperclip
 from .utils import format_text, is_hallucination, press_ctrl_v
+from core.stats import add_words
 
 class Transcriber:
     def __init__(self, config):
@@ -52,6 +53,11 @@ class Transcriber:
             text = format_text(raw_text, has_selection=has_selection, context_data=prev_char)
             
             print(f"[Transcriber] 📝 {text}")
+            
+            # Считаем слова и обновляем статистику
+            word_count = len(text.split())
+            if word_count > 0:
+                add_words(word_count)
             
             pyperclip.copy(text)
             time.sleep(0.05)

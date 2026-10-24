@@ -68,6 +68,13 @@ class RecordingOverlay:
             self.label.config(text=text)
 
         self.root.after(50, self._poll)
+    def update_position(self, position):
+        w, h = 200, 46
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - w) // 2
+        y = 60 if position == "top" else sh - h - 80
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
     def run(self):
         self.root.mainloop()
