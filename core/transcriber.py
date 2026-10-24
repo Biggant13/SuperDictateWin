@@ -4,6 +4,7 @@ import numpy as np
 import onnx_asr
 import pyperclip
 from .utils import format_text, is_hallucination, press_ctrl_v
+from core.config import BASE_DIR   # <-- добавить
 from core.stats import add_words
 
 class Transcriber:
@@ -11,7 +12,7 @@ class Transcriber:
         self.model_name = config["model_name"]
         self.model_path = config.get("model_path", "")
         self.language = config.get("language", "ru")
-        self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.base_dir = BASE_DIR   # <-- было: dirname(dirname(__file__))
         self.model = None
 
     def load_model(self):
