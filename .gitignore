@@ -31,3 +31,6 @@ models/
 stats.json
 config.json.bak
 *.log
+
+#Other
+backlog.txt
