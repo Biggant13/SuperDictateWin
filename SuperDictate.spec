@@ -27,7 +27,8 @@ datas += tmp_datas; binaries += tmp_binaries; hiddenimports += tmp_hidden
 datas += collect_data_files('sounddevice')
 
 # config.json рядом с .exe
-datas.append(('config.json', '.'))
+if os.path.exists('config.json'):
+    datas.append(('config.json', '.'))
 
 # Скрытые импорты
 hiddenimports += [
