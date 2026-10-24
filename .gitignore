@@ -25,3 +25,8 @@ venv-convert/
 models/
 *.bin
 *.dll
+
+# Runtime data (не должно быть в git)
+stats.json
+config.json.bak
+*.log
