@@ -2,7 +2,13 @@ import os
 import json
 import sys
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0] if getattr(sys, "frozen", False) else __file__)))
+if getattr(sys, "frozen", False):
+    # exe-режим: config.json рядом с исполняемым файлом
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.argv[0]))
+else:
+    # скрипт: config.json в корне проекта
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 
 DEFAULT_CONFIG = {
