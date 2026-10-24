@@ -3,6 +3,7 @@ venv/
 .venv/
 
 # Сборка PyInstaller
+dist/
 build/
 *.spec.bak
 
