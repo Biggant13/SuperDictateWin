@@ -1,4 +1,5 @@
 import sys
+import os
 import signal
 import threading
 from pynput import keyboard
@@ -8,11 +9,15 @@ from core.audio import AudioRecorder
 from core.transcriber import Transcriber
 from core.ui import RecordingOverlay
 from core.tray import start_tray
-from core.utils import parse_hotkey, normalize_key
 from core.sounds import beep_start, beep_stop
 from core.settings import open_settings_window
 from core.stats import add_words # <-- Импортируем статистику
 from core.utils import parse_hotkey, normalize_key, get_context
+
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
 
 def main():
     print("=" * 50)

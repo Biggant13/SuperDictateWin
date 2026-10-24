@@ -3,8 +3,9 @@ import time
 import numpy as np
 import onnx_asr
 import pyperclip
+from huggingface_hub.utils import disable_progress_bars 
 from .utils import format_text, is_hallucination, press_ctrl_v
-from core.config import BASE_DIR   # <-- добавить
+from core.config import BASE_DIR
 from core.stats import add_words
 
 class Transcriber:
@@ -16,6 +17,7 @@ class Transcriber:
         self.model = None
 
     def load_model(self):
+        disable_progress_bars()
         model_path = self.model_path
         if model_path:
             if not os.path.isabs(model_path):
