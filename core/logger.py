@@ -44,7 +44,7 @@ def setup_logger():
 
     # Перехватываем все print() и ошибки в приложении
     sys.stdout = StreamToLogger(logger, logging.INFO)
-    sys.stderr = StreamToLogger(logger, logging.ERROR)
+    sys.stderr = StreamToLogger(logger, logging.WARNING)
 
     logger.info("--- Запуск SuperDictate ---")
     return logger
