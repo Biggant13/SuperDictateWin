@@ -1,8 +1,8 @@
-onnx-asr[cpu,hub]
-sounddevice
-pynput
-pyperclip
-pystray
-pillow
-huggingface_hub
-numpy
+onnx-asr[cpu,hub]==0.12.0
+sounddevice==0.5.6
+pynput==1.8.2
+pyperclip==1.11.0
+pystray==0.19.5
+pillow==13.0.0
+huggingface_hub==2.2.0
+numpy==2.5.4
