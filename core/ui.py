@@ -1,4 +1,3 @@
-import ctypes
 import tkinter as tk
 
 class RecordingOverlay:
@@ -12,7 +11,6 @@ class RecordingOverlay:
         self.root.attributes("-topmost", True)
         self.root.attributes("-alpha", 0.9)
         self.root.configure(bg="#202020")
-        self.root.attributes("-toolwindow", True)
 
         w, h = 220, 46  # Чуть шире, чтобы влез длинный текст
         sw = self.root.winfo_screenwidth()
@@ -29,14 +27,8 @@ class RecordingOverlay:
                               font=("Segoe UI", 11, "bold"))
         self.label.pack(expand=True, fill="both")
 
-        self.root.update_idletasks()
-        GWL_EXSTYLE, WS_EX_NOACTIVATE = -20, 0x08000000
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST = 0x00000080, 0x00000008
-        u = ctypes.windll.user32
-        hwnd = u.GetAncestor(self.root.winfo_id(), 2)
-        if hwnd:
-            ex = u.GetWindowLongW(hwnd, GWL_EXSTYLE)
-            u.SetWindowLongW(hwnd, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST)
+        from core.platform import get_platform
+        get_platform().setup_overlay_window(self.root)
 
         self.root.withdraw()
         self._visible = False
@@ -68,6 +60,7 @@ class RecordingOverlay:
             self.label.config(text=text)
 
         self.root.after(50, self._poll)
+
     def update_position(self, position):
         w, h = 200, 46
         sw = self.root.winfo_screenwidth()

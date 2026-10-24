@@ -1,18 +1,11 @@
 import time
-import ctypes
 import pyperclip
 from pynput import keyboard
+from core.platform import get_platform
 
 HALLUCINATIONS = {"редактор субтитров", "корректор", "субтитры", "продолжение следует",
                   "спасибо за просмотр", "подписывайтесь на канал", "dimatorzok", "опочки"}
 
-# Коды виртуальных клавиш Windows
-VK_CONTROL = 0x11
-VK_C = 0x43
-VK_SHIFT = 0x10
-VK_LEFT = 0x25
-VK_RIGHT = 0x27
-KEYEVENTF_KEYUP = 0x0002
 
 def _map_key(name):
     name = name.strip().lower()
@@ -63,35 +56,22 @@ def is_hallucination(text: str) -> bool:
     return any(m in t for m in HALLUCINATIONS)
 
 def press_ctrl_v():
-    u = ctypes.windll.user32
-    u.keybd_event(VK_CONTROL, 0, 0, 0)
-    u.keybd_event(0x56, 0, 0, 0) # VK_V
-    time.sleep(0.02)
-    u.keybd_event(0x56, 0, KEYEVENTF_KEYUP, 0)
-    u.keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, 0)
-
-def _send_key(vk, up=False):
-    ctypes.windll.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP if up else 0, 0)
-    time.sleep(0.01) # Небольшая пауза, чтобы система успевала обрабатывать
+    get_platform().send_paste()
 
 def get_context():
-    user32 = ctypes.windll.user32
+    plat = get_platform()
     old_clip = ""
     try: old_clip = pyperclip.paste()
     except: pass
 
-    # Очищаем буфер
     try: pyperclip.copy("")
     except: pass
     time.sleep(0.05)
 
     # 1. Проверяем выделение (Ctrl+C)
-    _send_key(VK_CONTROL)
-    _send_key(VK_C)
-    _send_key(VK_C, up=True)
-    _send_key(VK_CONTROL, up=True)
-    time.sleep(0.15) 
-    
+    plat.send_copy()
+    time.sleep(0.15)
+
     selected_text = ""
     try: selected_text = pyperclip.paste()
     except: pass
@@ -101,30 +81,21 @@ def get_context():
         except: pass
         return True, selected_text
 
-    # 2. Выделения нет. Берем 1 символ СЛЕВА
-    _send_key(VK_SHIFT)
-    _send_key(VK_LEFT)
-    _send_key(VK_LEFT, up=True)
-    _send_key(VK_SHIFT, up=True)
-    time.sleep(0.1) # Даем редактору выделить символ
-    
-    _send_key(VK_CONTROL)
-    _send_key(VK_C)
-    _send_key(VK_C, up=True)
-    _send_key(VK_CONTROL, up=True)
+    # 2. Выделения нет — берём 1 символ слева
+    plat.send_select_prev_char()
+    time.sleep(0.1)
+
+    plat.send_copy()
     time.sleep(0.15)
-    
+
     prev_char = ""
     try: prev_char = pyperclip.paste()
     except: pass
-    
-    # Возвращаем курсор ровно на место (снимаем выделение)
-    _send_key(VK_SHIFT)
-    _send_key(VK_RIGHT)
-    _send_key(VK_RIGHT, up=True)
-    _send_key(VK_SHIFT, up=True)
+
+    # Возвращаем курсор ровно на место
+    plat.send_unselect_prev_char()
     time.sleep(0.05)
-    
+
     try: pyperclip.copy(old_clip)
     except: pass
 

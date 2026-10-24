@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import sys
 from PyInstaller.utils.hooks import collect_all, collect_data_files
 
 datas = []
@@ -30,15 +31,25 @@ datas.append(('config.json', '.'))
 
 # Скрытые импорты
 hiddenimports += [
-    'pynput.keyboard._win32',
-    'pynput.mouse._win32',
     'sounddevice',
     'pyperclip',
-    'pystray._win32',
     'PIL._tkinter_finder',
     'onnx_asr',
     'onnxruntime',
 ]
+
+if sys.platform == 'win32':
+    hiddenimports += [
+        'pynput.keyboard._win32',
+        'pynput.mouse._win32',
+        'pystray._win32',
+    ]
+elif sys.platform.startswith('linux'):
+    hiddenimports += [
+        'pynput.keyboard._xorg',
+        'pynput.mouse._xorg',
+        'pystray._xorg',
+    ]
 
 a = Analysis(
     ['main.py'],
