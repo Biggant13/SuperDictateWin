@@ -1,10 +1,12 @@
 import time
 from pynput.keyboard import Controller, Key
 from .base import BasePlatform
+from pynput import keyboard
 
 class LinuxPlatform(BasePlatform):
-    def __init__(self) -> None:
-        self._kbd = Controller()
+    def __init__(self):
+        self._kbd = keyboard.Controller()
+        self._listener = None
 
     def _combo(self, *keys, hold: float = 0.01, gap: float = 0.01) -> None:
         for k in keys:
@@ -35,3 +37,15 @@ class LinuxPlatform(BasePlatform):
             tk_root.wm_attributes('-topmost', True)
         except Exception:
             pass
+    def start_key_listener(self, on_press_cb, on_release_cb) -> None:
+        self._listener = keyboard.Listener(
+            on_press=on_press_cb, 
+            on_release=on_release_cb
+        )
+        self._listener.daemon = True
+        self._listener.start()
+
+    def stop_key_listener(self) -> None:
+        if self._listener:
+            self._listener.stop()
+            self._listener = None

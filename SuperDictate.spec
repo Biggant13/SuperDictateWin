@@ -50,6 +50,9 @@ elif sys.platform.startswith('linux'):
         'pynput.keyboard._xorg',
         'pynput.mouse._xorg',
         'pystray._xorg',
+        'evdev',              
+        'evdev._input',       
+        'evdev._ecodes',      
     ]
 
 a = Analysis(

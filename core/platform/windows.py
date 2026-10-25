@@ -1,6 +1,7 @@
 import ctypes
 import time
 from .base import BasePlatform
+from pynput import keyboard
 
 VK_CONTROL = 0x11
 VK_C = 0x43
@@ -11,6 +12,11 @@ VK_RIGHT = 0x27
 KEYEVENTF_KEYUP = 0x0002
 
 class WindowsPlatform(BasePlatform):
+    
+    def __init__(self):
+        self._kbd = keyboard.Controller()
+        self._listener = None
+
     def _send_key(self, vk: int, up: bool = False) -> None:
         ctypes.windll.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP if up else 0, 0)
         time.sleep(0.01)
@@ -62,3 +68,16 @@ class WindowsPlatform(BasePlatform):
                 hwnd, GWL_EXSTYLE,
                 ex | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
             )
+
+    def start_key_listener(self, on_press_cb, on_release_cb) -> None:
+        self._listener = keyboard.Listener(
+            on_press=on_press_cb, 
+            on_release=on_release_cb
+        )
+        self._listener.daemon = True
+        self._listener.start()
+
+    def stop_key_listener(self) -> None:
+        if self._listener:
+            self._listener.stop()
+            self._listener = None

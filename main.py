@@ -1,8 +1,6 @@
-import sys
-import os
 import signal
 import threading
-from pynput import keyboard
+from core.platform import get_platform
 
 from core.logger import setup_logger
 logger = setup_logger()
@@ -21,6 +19,7 @@ def main():
     print("=" * 50)
     print("  SuperDictate для Windows (GigaAM v3)")
     print("=" * 50)
+    platform = get_platform()
 
     cfg = load_config()
     hotkey_set = parse_hotkey(cfg["hotkey"])
@@ -79,13 +78,10 @@ def main():
                 daemon=True
             ).start()
 
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.daemon = True
-    listener.start()
+    platform.start_key_listener(on_press, on_release)
 
     def _shutdown():
-        try: listener.stop()
-        except Exception: pass
+        platform.stop_key_listener() # <-- Останавливаем слушатель
         try: overlay.root.after(0, overlay.quit)
         except Exception: pass
 
