@@ -23,10 +23,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4.2.2   # Обновлено (поддержка Node 24)
+        uses: actions/checkout@v5   # Обновлено до Node.js 24
 
       - name: Set up Python
-        uses: actions/setup-python@v5.6.0   # Обновлено (поддержка Node 24)
+        uses: actions/setup-python@v6   # Обновлено до Node.js 24
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -72,7 +72,7 @@ jobs:
 
       # ---------- Загрузка артефакта ----------
       - name: Upload artifact
-        uses: actions/upload-artifact@v4.6.2   # Обновлено (поддержка Node 24)
+        uses: actions/upload-artifact@v6   # Обновлено до Node.js 24
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.asset_name }}
@@ -87,7 +87,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4.1.8   # Обновлено (поддержка Node 24)
+        uses: actions/download-artifact@v7   # Обновлено до Node.js 24
         with:
           path: artifacts
           merge-multiple: true
