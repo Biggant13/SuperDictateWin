@@ -15,7 +15,7 @@ jobs:
           - os: windows-latest
             artifact_name: SuperDictate-Windows
             asset_name: SuperDictate-Windows.zip
-          - os: ubuntu-22.04      # НЕ ubuntu-latest (см. пояснение ниже)
+          - os: ubuntu-22.04      # НЕ ubuntu-latest (для совместимости glibc)
             artifact_name: SuperDictate-Linux
             asset_name: SuperDictate-Linux.tar.gz
 
@@ -23,10 +23,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4.2.2   # Обновлено (поддержка Node 24)
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.6.0   # Обновлено (поддержка Node 24)
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -72,7 +72,7 @@ jobs:
 
       # ---------- Загрузка артефакта ----------
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2   # Обновлено (поддержка Node 24)
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.asset_name }}
@@ -87,7 +87,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v4.1.8   # Обновлено (поддержка Node 24)
         with:
           path: artifacts
           merge-multiple: true

@@ -2,13 +2,24 @@ import os
 import select
 import threading
 import time
-import evdev
-from evdev import InputDevice, categorize, ecodes
+
+# Безопасный импорт для Windows (чтобы IDE не ругалась и не было краша)
+try:
+    import evdev
+    from evdev import InputDevice, categorize, ecodes
+except ImportError:
+    evdev = None
+    InputDevice = None
+    categorize = None
+    ecodes = None
+
 from pynput.keyboard import Controller, Key, KeyCode
 from .base import BasePlatform
 
 class LinuxWaylandPlatform(BasePlatform):
     def __init__(self):
+        if evdev is None:
+            raise RuntimeError("Библиотека 'evdev' не установлена. Этот бэкенд работает только на Linux.")
         self._kbd = Controller()
         self._listener_thread = None
         self._stop_event = threading.Event()
