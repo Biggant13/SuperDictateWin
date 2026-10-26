@@ -91,53 +91,60 @@ python main.py
 ---
 ### Linux
 
-Поддерживается графическая сессия X11. В Wayland глобальные хоткеи и симуляция клавиш не работают — это ограничение pynput, не приложения (см. раздел «Известные ограничения»).
+Программа поддерживает как графическую сессию **X11**, так и **Wayland**.  
+В X11 используется стандартный бэкенд `pynput`. В Wayland программа автоматически переключается на `evdev` — для этого ваш пользователь должен состоять в группе `input` (иначе не будет доступа к устройствам ввода).
 
-**Автоматическая установка (одной командой)**
+#### Автоматическая установка (рекомендуется)
 
-Вы можете установить последнюю версию, настроить ярлык и права доступа одной командой. Откройте терминал и выполните:
+Скрипт сам скачает последнюю версию, распакует её, создаст ярлык в меню и добавит пользователя в группу `input` (для Wayland). Откройте терминал и выполните:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Biggant13/SuperDictateWin/main/install_superdictate.sh | bash
+```
 
-**Вариант 1. Готовый релиз (рекомендуется)**
+> Скрипт запросит пароль `sudo`. После установки потребуется выйти из системы и зайти снова, чтобы права группы применились.
+
+#### Вариант 1. Готовый релиз (вручную)
 
 1. Скачайте `SuperDictate-Linux.tar.gz` со страницы [Releases](../../releases/latest).
+
 2. Установите системные зависимости.
 
-Ubuntu / Debian / Mint:
+   **Ubuntu / Debian / Mint:**
+   ```bash
+   sudo apt update
+   sudo apt install -y python3-tk libportaudio2 xclip \
+                       libayatana-appindicator3-1 \
+                       gir1.2-ayatanaappindicator3-0.1
+   ```
 
-```bash
-sudo apt update
-sudo apt install -y python3-tk libportaudio2 xclip \
-                    libayatana-appindicator3-1 \
-                    gir1.2-ayatanaappindicator3-0.1
-```
+   **Fedora:**
+   ```bash
+   sudo dnf install -y python3-tkinter portaudio xclip \
+                       libayatana-appindicator-gtk3
+   ```
 
-Fedora:
-
-```bash
-sudo dnf install -y python3-tkinter portaudio xclip \
-                    libayatana-appindicator-gtk3
-```
-
-Arch / Manjaro:
-
-```bash
-sudo pacman -S tk portaudio xclip libayatana-appindicator
-```
+   **Arch / Manjaro:**
+   ```bash
+   sudo pacman -S tk portaudio xclip libayatana-appindicator
+   ```
 
 3. Распакуйте и запустите:
 
-```bash
-tar -xzf SuperDictate-Linux.tar.gz
-cd SuperDictate
-./SuperDictate
-```
+   ```bash
+   tar -xzf SuperDictate-Linux.tar.gz
+   cd SuperDictate
+   ./SuperDictate
+   ```
 
-Модель (~850 МБ) скачается при первом запуске.
+   Модель (~850 МБ) скачается при первом запуске.
 
-**Вариант 2. Из исходников**
+> **Пользователям Wayland:** Если при запуске хоткеи не работают, добавьте себя в группу `input` и перезайдите в систему:
+> ```bash
+> sudo usermod -aG input $USER
+> ```
+
+#### Вариант 2. Из исходников
 
 ```bash
 # 1. Системные зависимости (см. блок выше по вашему дистрибутиву)
@@ -151,7 +158,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Требования: Linux с X11, Python 3.10+, микрофон, интернет для первой загрузки модели.
+**Требования:** Linux с X11 или Wayland, Python 3.10+, микрофон, интернет для первой загрузки модели.
 
 ### Первый запуск
 
@@ -199,14 +206,14 @@ python main.py
 - Сделан безопасный импорт библиотеки `evdev`. Теперь приложение не падает с ошибкой `ModuleNotFoundError` при запуске на Windows или Linux без установленного `evdev`. 
 - Для работы Wayland-бэкенда по-прежнему требуется установка `evdev` (автоматизировано в скрипте установки).
 
-### [v1.5.0] - Поддержка Wayland и автоустановка (текущая стабильная)
+### [v1.5.0] - Поддержка Wayland и автоустановка
 
 **Поддержка Wayland (Linux):**
 - Добавлен альтернативный бэкенд на базе библиотеки `evdev` для перехвата горячих клавиш в графической сессии Wayland.
 - Программа теперь автоматически определяет тип сессии (`XDG_SESSION_TYPE`) и выбирает нужный бэкенд: `pynput` для X11/Windows и `evdev` для Wayland.
 - Добавлен скрипт автоматической установки для Linux (`install_superdictate.sh`), который скачивает последнюю версию, создает ярлык и настраивает права доступа (добавляет пользователя в группу `input`, необходимую для работы `evdev`).
 
-### [v1.4.0] - Улучшение стабильности и логирования (текущая стабильная)
+### [v1.4.0] - Улучшение стабильности и логирования
 
 **Логирование и отладка:**
 - Добавлен модуль `core/logger.py`. Теперь все системные сообщения и ошибки записываются в файл `superdictate.log` рядом с исполняемым файлом (или в корне проекта).
