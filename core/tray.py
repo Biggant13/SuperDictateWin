@@ -3,6 +3,8 @@ import time
 from PIL import Image, ImageDraw
 import pystray
 from core.stats import get_stats_text
+from core.version import __version__
+from core.logger import open_log_file
 
 def _make_icon_image():
     size = 64
@@ -24,31 +26,40 @@ def start_tray(on_quit, on_settings, sound_state, toggle_sound):
             
         def settings_action(icon, item):
             on_settings()
+            
+        def open_log_action(icon, item):
+            open_log_file()
+
+        # Получаем текст статистики при старте
+        today_text, total_text = get_stats_text()
 
         menu = pystray.Menu(
-            pystray.MenuItem("SuperDictate (GigaAM)", None, enabled=False),
-            pystray.MenuItem(lambda item: f"📊 {get_stats_text()}", None, enabled=False),
+            pystray.MenuItem(f"SuperDictate v{__version__}", None, enabled=False),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem(lambda item: get_stats_text()[0], None, enabled=False),
+            pystray.MenuItem(lambda item: get_stats_text()[1], None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Звуковые сигналы", toggle_sound_action, checked=lambda item: sound_state[0]),
             pystray.MenuItem("Настройки...", settings_action),
+            pystray.MenuItem("Открыть лог", open_log_action),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Выход", quit_action),
         )
         
         icon = pystray.Icon("superdictate", _make_icon_image(), "SuperDictate", menu)
         
-        # Фоновый поток для обновления циферок в меню
+        # Фоновый поток для обновления циферок в меню (каждые 2 секунды)
         def updater():
             while True:
                 time.sleep(2)
                 try:
                     icon.update_menu()
                 except:
-                    break # Если иконка закрыта, выходим из цикла
+                    break
                     
         threading.Thread(target=updater, daemon=True).start()
         
-        # Запускаем саму иконку (этот вызов блокирует поток до момента выхода)
+        # Запускаем саму иконку
         icon.run()
         
     threading.Thread(target=_run, daemon=True).start()

@@ -1,3 +1,4 @@
+import subprocess
 import logging
 import sys
 import os
@@ -48,3 +49,14 @@ def setup_logger():
 
     logger.info("--- Запуск SuperDictate ---")
     return logger
+def open_log_file():
+    """Открывает файл лога в системном просмотрщике."""
+    if not os.path.exists(LOG_FILE):
+        return
+    try:
+        if sys.platform == 'win32':
+            os.startfile(LOG_FILE)
+        else:
+            subprocess.Popen(['xdg-open', LOG_FILE])
+    except Exception as e:
+        print(f"[Logger] Не удалось открыть лог: {e}")
