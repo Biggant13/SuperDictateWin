@@ -24,7 +24,7 @@ def main():
     cfg = load_config()
     hotkey_set = parse_hotkey(cfg["hotkey"])
     
-    audio = AudioRecorder()
+    audio = AudioRecorder(device=cfg.get("input_device", ""))
     transcriber = Transcriber(cfg)
     transcriber.load_model()
     
@@ -92,6 +92,7 @@ def main():
             # Применяем позицию на лету
             overlay.update_position(cfg["overlay_position"])
             # Если поменяли клавишу — предупредили в окне.
+            audio.set_device(cfg.get("input_device", ""))
         # Вызываем создание окна в главном потоке tkinter
         overlay.root.after(0, lambda: open_settings_window(overlay.root, cfg, on_save))
 

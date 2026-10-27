@@ -1,13 +1,14 @@
 import json
 import tkinter as tk
 from tkinter import ttk, messagebox
+import sounddevice as sd
 from core.config import CONFIG_PATH
 
 def open_settings_window(root, current_cfg, on_save_callback):
     """Открывает окно настроек поверх остальных."""
     win = tk.Toplevel(root)
     win.title("Настройки SuperDictate")
-    win.geometry("350x300")
+    win.geometry("350x420") # <-- Увеличили высоту окна
     win.attributes("-topmost", True)
     win.resizable(False, False)
 
@@ -23,12 +24,36 @@ def open_settings_window(root, current_cfg, on_save_callback):
     entry_hotkey.insert(0, current_cfg.get("hotkey", "f9"))
     entry_hotkey.pack()
 
+    # --- Микрофон ---
+    tk.Label(win, text="Микрофон:", font=("Segoe UI", 10)).pack(pady=(10, 5))
+    
+    # Получаем список только входных устройств
+    devices = sd.query_devices()
+    input_devices = ["По умолчанию (системный)"]
+    device_map = {"По умолчанию (системный)": ""}
+    
+    current_device_idx = current_cfg.get("input_device", "")
+    current_device_name = "По умолчанию (системный)"
+    
+    for i, dev in enumerate(devices):
+        if dev['max_input_channels'] > 0:
+            name = f"{dev['name']} ({i})"
+            input_devices.append(name)
+            device_map[name] = i
+            if str(i) == str(current_device_idx):
+                current_device_name = name
+
+    device_var = tk.StringVar(value=current_device_name)
+    combo_device = ttk.Combobox(win, textvariable=device_var, values=input_devices, state="readonly", width=40)
+    combo_device.pack()
+
+    # --- Позиция оверлея ---
     tk.Label(win, text="Позиция оверлея:", font=("Segoe UI", 10)).pack(pady=(10, 5))
     overlay_var = tk.StringVar(value=current_cfg.get("overlay_position", "bottom"))
     combo_overlay = ttk.Combobox(win, textvariable=overlay_var, values=["bottom", "top"], state="readonly", width=10)
     combo_overlay.pack()
 
-    # Звук
+    # --- Звук ---
     sound_var = tk.BooleanVar(value=current_cfg.get("sound_enabled", True))
     tk.Checkbutton(win, text="Включить звуковые сигналы", variable=sound_var, font=("Segoe UI", 10)).pack(pady=(15, 5))
 
@@ -37,6 +62,10 @@ def open_settings_window(root, current_cfg, on_save_callback):
         new_cfg["hotkey"] = entry_hotkey.get().strip().lower()
         new_cfg["overlay_position"] = overlay_var.get()
         new_cfg["sound_enabled"] = sound_var.get()
+        
+        # Сохраняем индекс микрофона
+        selected_dev_name = device_var.get()
+        new_cfg["input_device"] = device_map.get(selected_dev_name, "")
 
         try:
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:

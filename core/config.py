@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "overlay_position": "bottom",
     "beep_volume": 0.05,  # Громкость от 0.0 до 1.0 (0.05 — очень тихо)
     "sound_enabled": True,
+    "input_device": "",
 }
 
 def load_config():
