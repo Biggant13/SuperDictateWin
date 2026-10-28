@@ -3,8 +3,8 @@ name: Build & Release
 on:
   push:
     tags:
-      - 'v*'                 # запуск при пуше тега вида v1.0.0
-  workflow_dispatch:         # возможность запустить вручную из вкладки Actions
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,7 +15,7 @@ jobs:
           - os: windows-latest
             artifact_name: SuperDictate-Windows
             asset_name: SuperDictate-Windows.zip
-          - os: ubuntu-22.04      # НЕ ubuntu-latest (для совместимости glibc)
+          - os: ubuntu-22.04
             artifact_name: SuperDictate-Linux
             asset_name: SuperDictate-Linux.tar.gz
 
@@ -23,59 +23,68 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5   # Обновлено до Node.js 24
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v6   # Обновлено до Node.js 24
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: 'pip'
 
-      # ---------- Системные зависимости (только Linux) ----------
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libportaudio2 \
-            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libportaudio2 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
             libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 \
-            libxcb-shape0 libxcb-cursor0 \
-            xclip \
-            libayatana-appindicator3-1 \
-            gir1.2-ayatanaappindicator3-0.1 \
-            libgirepository1.0-dev \
-            python3-tk \
-            binutils
+            libxcb-shape0 libxcb-cursor0 xclip \
+            libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 \
+            libgirepository1.0-dev python3-tk binutils
 
-      # ---------- Python-зависимости ----------
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # ---------- Сборка ----------
       - name: Build with PyInstaller
         run: pyinstaller SuperDictate.spec --clean --noconfirm
 
-      # ---------- Упаковка артефакта ----------
-      - name: Package artifact (Windows)
+      # ---------- Упаковка (ZIP для Windows) ----------
+      - name: Package ZIP (Windows)
         if: runner.os == 'Windows'
-        run: |
-          powershell Compress-Archive -Path dist\SuperDictate\* -DestinationPath ${{ matrix.asset_name }}
+        run: powershell Compress-Archive -Path dist\SuperDictate\* -DestinationPath ${{ matrix.asset_name }}
 
-      - name: Package artifact (Linux)
+      # ---------- Упаковка (TAR.GZ для Linux) ----------
+      - name: Package TAR.GZ (Linux)
         if: runner.os == 'Linux'
         run: |
           cd dist
           tar -czf ../${{ matrix.asset_name }} SuperDictate/
 
-      # ---------- Загрузка артефакта ----------
-      - name: Upload artifact
-        uses: actions/upload-artifact@v6   # Обновлено до Node.js 24
+      # ---------- Создание установщика Inno Setup (Только Windows) ----------
+      - name: Install Inno Setup (Windows)
+        if: runner.os == 'Windows'
+        run: choco install innosetup -y
+
+      - name: Build Installer (Windows)
+        if: runner.os == 'Windows'
+        run: iscc installer.iss
+
+      # ---------- Загрузка артефактов ----------
+      - name: Upload ZIP artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.artifact_name }}
+          name: ${{ matrix.artifact_name }}-ZIP
           path: ${{ matrix.asset_name }}
+          if-no-files-found: error
+
+      - name: Upload Installer artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: SuperDictate-Windows-Installer
+          path: dist_installer/*.exe
           if-no-files-found: error
 
   # ---------- Публикация Release ----------
@@ -87,7 +96,7 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v7   # Обновлено до Node.js 24
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
           merge-multiple: true
