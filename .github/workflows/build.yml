@@ -50,18 +50,11 @@ jobs:
       - name: Inject version from tag (All OS)
         shell: bash
         run: |
-          # Получаем имя тега (например, refs/tags/v1.6.0 или v1.6.0)
           TAG_NAME="${{ github.ref_name }}"
-          
-          # Если это ручной запуск (не тег), ставим дефолтную версию
           if [[ "$TAG_NAME" != v* ]]; then
-            TAG_NAME="v"
+            TAG_NAME="v1.5.1"
           fi
-          
-          # Отрезаем букву v
           VERSION=${TAG_NAME#v}
-          
-          # Перезаписываем version.py
           echo "__version__ = \"$VERSION\"" > core/version.py
           echo "Установлена версия: $VERSION"
           
@@ -89,7 +82,21 @@ jobs:
 
       - name: Build Installer (Windows)
         if: runner.os == 'Windows'
-        run: iscc installer.iss
+        shell: pwsh
+        run: |
+          # Читаем файл version.py
+          $content = Get-Content core/version.py -Raw
+          # Вытаскиваем всё, что в кавычках
+          if ($content -match '__version__\s*=\s*"([^"]+)"') {
+              $version = $matches[1]
+          } else {
+              $version = "0.0.0-unknown"
+          }
+          
+          Write-Host "Сборка установщика с версией: $version"
+          
+          # Запускаем сборку
+          iscc /DMyAppVersion="$version" installer.iss
 
       # ---------- Загрузка артефактов ----------
       - name: Upload ZIP artifact
