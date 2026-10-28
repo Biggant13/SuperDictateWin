@@ -80,13 +80,22 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install innosetup -y
 
+      # ---------- Очистка старых файлов (Только Windows) ----------
+      - name: Clean old installer files (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (Test-Path "dist_installer") {
+              Remove-Item -Recurse -Force "dist_installer"
+          }
+
+      # ---------- Создание установщика Inno Setup (Только Windows) ----------
       - name: Build Installer (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           # Читаем файл version.py
           $content = Get-Content core/version.py -Raw
-          # Вытаскиваем всё, что в кавычках
           if ($content -match '__version__\s*=\s*"([^"]+)"') {
               $version = $matches[1]
           } else {
@@ -95,8 +104,11 @@ jobs:
           
           Write-Host "Сборка установщика с версией: $version"
           
-          # Запускаем сборку
-          iscc /DMyAppVersion="$version" installer.iss
+          # Убрали кавычки вокруг $version!
+          iscc /DMyAppVersion=$version installer.iss
+          
+          # Проверяем, какой файл создался
+          Get-ChildItem dist_installer
 
       # ---------- Загрузка артефактов ----------
       - name: Upload ZIP artifact
