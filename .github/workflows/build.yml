@@ -47,6 +47,26 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
+      - name: Inject version from tag (All OS)
+        shell: bash
+        run: |
+          # Получаем имя тега (например, refs/tags/v1.6.0 или v1.6.0)
+          TAG_NAME="${{ github.ref_name }}"
+          
+          # Если это ручной запуск (не тег), ставим дефолтную версию
+          if [[ "$TAG_NAME" != v* ]]; then
+            TAG_NAME="v"
+          fi
+          
+          # Отрезаем букву v
+          VERSION=${TAG_NAME#v}
+          
+          # Перезаписываем version.py
+          echo "__version__ = \"$VERSION\"" > core/version.py
+          echo "Установлена версия: $VERSION"
+          
+      # ---------- СБОРКА ----------
+
       - name: Build with PyInstaller
         run: pyinstaller SuperDictate.spec --clean --noconfirm
 
