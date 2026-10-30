@@ -1,3 +1,4 @@
+import sys
 import queue
 import numpy as np
 import sounddevice as sd
@@ -26,31 +27,48 @@ class AudioRecorder:
                 mono = mono.mean(axis=1, keepdims=True)
             self.queue.put(mono)
 
-    def start(self):
+    def start(self) -> bool:
+        """True — запись началась. False — микрофон недоступен (без исключения)."""
         if self.recording:
-            return
+            return True
         self.queue.queue.clear()
-        self.recording = True
-        
-        try:
-            self.stream = sd.InputStream(
-                samplerate=SAMPLE_RATE, 
-                channels=CHANNELS,
-                dtype="float32", 
-                callback=self._callback,
-                device=self.device
-            )
-            self.stream.start()
-            print(f"[Audio] 🎤 Запись... (устройство: {self.device or 'по умолчанию'})")
-        except Exception as e:
-            print(f"[Audio] Ошибка выбранного микрофона: {e}. Откат к стандартному.")
-            # self.device НЕ трогаем — только этот раз пишем на дефолт
-            self.stream = sd.InputStream(
-                samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32",
-                callback=self._callback, device=None
-            )
-            self.stream.start()
-            print("[Audio] 🎤 Запись... (стандартное устройство)")
+
+        candidates = []
+        if self.device is not None:
+            candidates.append(("выбранное", self.device))
+        # WASAPI надёжнее MME на Windows
+        if sys.platform == "win32":
+            try:
+                for i, api in enumerate(sd.query_hostapis()):
+                    if "wasapi" in api["name"].lower() and api["default_input_device"] >= 0:
+                        candidates.append(("WASAPI", (api["default_input_device"], i)))
+                        break
+            except Exception:
+                pass
+        candidates.append(("по умолчанию", None))
+
+        last_err = None
+        for label, dev in candidates:
+            try:
+                stream = sd.InputStream(
+                    samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32",
+                    callback=self._callback, device=dev,
+                )
+                stream.start()
+                self.stream = stream
+                self.recording = True
+                print(f"[Audio] 🎤 Запись... ({label})")
+                return True
+            except Exception as e:
+                last_err = e
+                self.stream = None
+                print(f"[Audio] Не удалось открыть ({label}): {e}")
+
+        # ничего не открылось — чистое состояние
+        self.recording = False
+        self.queue.queue.clear()
+        print(f"[Audio] ❌ Микрофон недоступен: {last_err}")
+        return False
 
     def stop(self):
         if not self.recording:

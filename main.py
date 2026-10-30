@@ -10,7 +10,7 @@ from core.audio import AudioRecorder
 from core.transcriber import Transcriber
 from core.ui import RecordingOverlay
 from core.tray import start_tray
-from core.sounds import beep_start, beep_stop
+from core.sounds import beep_error, beep_start, beep_stop
 from core.settings import open_settings_window
 from core.stats import add_words # <-- Импортируем статистику
 from core.utils import parse_hotkey, normalize_key, get_context
@@ -52,12 +52,20 @@ def main():
 
     # --- Колбэки для pynput ---
     def on_press(key):
-        nk = normalize_key(key)
-        pressed_keys.add(nk)
-        if not audio.recording and hotkey_set.issubset(pressed_keys):
-            audio.start()
-            if sound_state[0]:
-                beep_start(beep_vol)
+        try:
+            nk = normalize_key(key)
+            pressed_keys.add(nk)
+            if audio.recording or processing_lock.locked():
+                return
+            if pressed_keys == hotkey_set.issubset(pressed_keys):   # если ещё не применяли P-«строгая проверка» — оставьте issubset
+                if audio.start():
+                    if sound_state[0]:
+                        beep_start(beep_vol)
+                else:
+                    if sound_state[0]:
+                        beep_error(beep_vol)
+        except Exception as e:
+            logger.error(f"[Main] on_press: {e}")
 
     def on_release(key):
         nk = normalize_key(key)

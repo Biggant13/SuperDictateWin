@@ -24,3 +24,6 @@ def beep_start(volume):
 
 def beep_stop(volume):
     play_beep(freq=600, duration=0.08, volume=volume)
+
+def beep_error(volume):
+    play_beep(freq=1000, duration=0.1, volume=volume)
