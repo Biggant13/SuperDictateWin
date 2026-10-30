@@ -1,4 +1,3 @@
-import sys
 import queue
 import numpy as np
 import sounddevice as sd
@@ -28,7 +27,6 @@ class AudioRecorder:
             self.queue.put(mono)
 
     def start(self) -> bool:
-        """True — запись началась. False — микрофон недоступен (без исключения)."""
         if self.recording:
             return True
         self.queue.queue.clear()
@@ -36,15 +34,6 @@ class AudioRecorder:
         candidates = []
         if self.device is not None:
             candidates.append(("выбранное", self.device))
-        # WASAPI надёжнее MME на Windows
-        if sys.platform == "win32":
-            try:
-                for i, api in enumerate(sd.query_hostapis()):
-                    if "wasapi" in api["name"].lower() and api["default_input_device"] >= 0:
-                        candidates.append(("WASAPI", (api["default_input_device"], i)))
-                        break
-            except Exception:
-                pass
         candidates.append(("по умолчанию", None))
 
         last_err = None
@@ -64,7 +53,6 @@ class AudioRecorder:
                 self.stream = None
                 print(f"[Audio] Не удалось открыть ({label}): {e}")
 
-        # ничего не открылось — чистое состояние
         self.recording = False
         self.queue.queue.clear()
         print(f"[Audio] ❌ Микрофон недоступен: {last_err}")
