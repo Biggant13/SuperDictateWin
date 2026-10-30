@@ -30,7 +30,8 @@ def main():
     transcriber.load_model()
     
     pressed_keys = set()
-    processing_flag = [False]
+    processing_lock = threading.Lock()
+    smart_insertion = [bool(cfg.get("smart_insertion", True))]
     beep_vol = float(cfg.get("beep_volume", 0.05))
     
     sound_state = [cfg.get("sound_enabled", True)]
@@ -44,9 +45,9 @@ def main():
             json.dump(cfg, f, indent=2, ensure_ascii=False)
 
     overlay = RecordingOverlay(
-        is_recording_cb=lambda: audio.recording, 
-        is_processing_cb=lambda: processing_flag[0], 
-        position=cfg["overlay_position"]
+        is_recording_cb=lambda: audio.recording,
+        is_processing_cb=lambda: processing_lock.locked(),
+        position=cfg["overlay_position"],
     )
 
     # --- Колбэки для pynput ---
@@ -61,23 +62,17 @@ def main():
     def on_release(key):
         nk = normalize_key(key)
         pressed_keys.discard(nk)
-
         if audio.recording and nk in hotkey_set:
             audio.stop()
             if sound_state[0]:
                 beep_stop(beep_vol)
-
             audio_data = audio.get_audio()
 
-            # 1. Считываем контекст безопасным методом
-            has_selection, prev_char = get_context(copy_method)   # ← было get_context()
+            def _process():
+                ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
+                transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
 
-            # 2. Запускаем распознавание
-            threading.Thread(
-                target=transcriber.transcribe_and_paste,
-                args=(audio_data, has_selection, prev_char, processing_flag),
-                daemon=True,
-            ).start()
+            threading.Thread(target=_process, daemon=True).start()
 
     platform.start_key_listener(on_press, on_release)
 
@@ -89,11 +84,12 @@ def main():
     # --- Окно настроек ---
     def open_settings():
         def on_save(new_cfg):
-            nonlocal copy_method                  # ← новое
+            nonlocal copy_method
             cfg.update(new_cfg)
             overlay.update_position(cfg["overlay_position"])
             audio.set_device(cfg.get("input_device", ""))
-            copy_method = cfg.get("copy_method", "insert")   # ← новое
+            copy_method = cfg.get("copy_method", "insert")      # ← из P1
+            smart_insertion[0] = bool(cfg.get("smart_insertion", True))  # ← новое
         overlay.root.after(0, lambda: open_settings_window(overlay.root, cfg, on_save))
 
     # Запуск трея (передаем функцию открытия настроек)

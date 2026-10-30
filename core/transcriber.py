@@ -81,40 +81,33 @@ class Transcriber:
             
         print("[Transcriber] Модель готова.")
 
-    def transcribe_and_paste(self, audio, has_selection, prev_char, processing_flag):
-        if processing_flag[0]:
+    def transcribe_and_paste(self, audio, get_context_fn, processing_lock):
+        if not processing_lock.acquire(blocking=False):
             return
-        processing_flag[0] = True
-        
         try:
             if audio is None or len(audio) < 16000 * 0.3:
                 return
-
-            rms = float(np.sqrt(np.mean(audio ** 2)))
-            if rms < 0.003:
+            if float(np.sqrt(np.mean(audio ** 2))) < 0.003:
                 return
+
+            has_selection, prev_char = get_context_fn()
 
             print("[Transcriber] 🔄 Распознавание...")
             raw_text = self.model.recognize(audio).strip()
-
             if not raw_text or is_hallucination(raw_text):
                 return
 
-            # Применяем умное форматирование с учетом контекста
             text = format_text(raw_text, has_selection=has_selection, context_data=prev_char)
-            
             print(f"[Transcriber] 📝 {text}")
-            
-            # Считаем слова и обновляем статистику
+
             word_count = len(text.split())
             if word_count > 0:
                 add_words(word_count)
-            
+
             pyperclip.copy(text)
             time.sleep(0.05)
             press_ctrl_v()
-            
         except Exception as e:
             print(f"[Transcriber] Ошибка: {e}")
         finally:
-            processing_flag[0] = False
+            processing_lock.release()
