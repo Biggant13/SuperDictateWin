@@ -2,7 +2,9 @@
 ; Требуется Inno Setup 6+
 
 #define MyAppName "SuperDictate"
-#define MyAppVersion "1.6.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0"
+#endif
 #define MyAppPublisher "Biggant13"
 #define MyAppURL "https://github.com/Biggant13/SuperDictateWin"
 #define MyAppExeName "SuperDictate.exe"
