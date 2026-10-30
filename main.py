@@ -55,9 +55,10 @@ def main():
         try:
             nk = normalize_key(key)
             pressed_keys.add(nk)
+            logger.info(f"[Key] press: {nk!r}, pressed={pressed_keys}, target={hotkey_set}")
             if audio.recording or processing_lock.locked():
                 return
-            if pressed_keys == hotkey_set.issubset(pressed_keys):   # если ещё не применяли P-«строгая проверка» — оставьте issubset
+            if pressed_keys == hotkey_set:   # если ещё не применяли P-«строгая проверка» — оставьте issubset
                 if audio.start():
                     if sound_state[0]:
                         beep_start(beep_vol)
@@ -69,6 +70,7 @@ def main():
 
     def on_release(key):
         nk = normalize_key(key)
+        logger.info(f"[Key] release: {nk!r}")
         pressed_keys.discard(nk)
         if audio.recording and nk in hotkey_set:
             audio.stop()
