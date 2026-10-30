@@ -58,7 +58,7 @@ def is_hallucination(text: str) -> bool:
 def press_ctrl_v():
     get_platform().send_paste()
 
-def get_context():
+def get_context(copy_method: str = "insert") -> tuple:
     plat = get_platform()
     old_clip = ""
     try: old_clip = pyperclip.paste()
@@ -68,8 +68,8 @@ def get_context():
     except: pass
     time.sleep(0.05)
 
-    # 1. Проверяем выделение (Ctrl+C)
-    plat.send_copy()
+    # 1. Проверяем выделение
+    plat.send_copy(method=copy_method)          # ← передаём метод
     time.sleep(0.15)
 
     selected_text = ""
@@ -85,14 +85,13 @@ def get_context():
     plat.send_select_prev_char()
     time.sleep(0.1)
 
-    plat.send_copy()
+    plat.send_copy(method=copy_method)          # ← и здесь тоже
     time.sleep(0.15)
 
     prev_char = ""
     try: prev_char = pyperclip.paste()
     except: pass
 
-    # Возвращаем курсор ровно на место
     plat.send_unselect_prev_char()
     time.sleep(0.05)
 

@@ -34,8 +34,11 @@ class LinuxWaylandPlatform(BasePlatform):
             self._kbd.release(k)
             time.sleep(gap)
 
-    def send_copy(self) -> None:
-        self._combo(Key.ctrl_l, 'c')
+    def send_copy(self, method: str = "insert") -> None:
+        if method == "ctrl_c":
+            self._combo(Key.ctrl_l, 'c')
+        else:
+            self._combo(Key.ctrl_l, Key.insert)
 
     def send_paste(self) -> None:
         self._combo(Key.ctrl_l, 'v', hold=0.02)

@@ -23,6 +23,7 @@ def main():
 
     cfg = load_config()
     hotkey_set = parse_hotkey(cfg["hotkey"])
+    copy_method = cfg.get("copy_method", "insert")
     
     audio = AudioRecorder(device=cfg.get("input_device", ""))
     transcriber = Transcriber(cfg)
@@ -60,22 +61,22 @@ def main():
     def on_release(key):
         nk = normalize_key(key)
         pressed_keys.discard(nk)
-        
+
         if audio.recording and nk in hotkey_set:
             audio.stop()
             if sound_state[0]:
                 beep_stop(beep_vol)
-            
+
             audio_data = audio.get_audio()
-            
-            # 1. Считываем контекст (выделение и символ перед курсором)
-            has_selection, prev_char = get_context()
-            
-            # 2. Запускаем распознавание с правильным количеством аргументов
+
+            # 1. Считываем контекст безопасным методом
+            has_selection, prev_char = get_context(copy_method)   # ← было get_context()
+
+            # 2. Запускаем распознавание
             threading.Thread(
-                target=transcriber.transcribe_and_paste, 
-                args=(audio_data, has_selection, prev_char, processing_flag), 
-                daemon=True
+                target=transcriber.transcribe_and_paste,
+                args=(audio_data, has_selection, prev_char, processing_flag),
+                daemon=True,
             ).start()
 
     platform.start_key_listener(on_press, on_release)
@@ -88,12 +89,11 @@ def main():
     # --- Окно настроек ---
     def open_settings():
         def on_save(new_cfg):
+            nonlocal copy_method                  # ← новое
             cfg.update(new_cfg)
-            # Применяем позицию на лету
             overlay.update_position(cfg["overlay_position"])
-            # Если поменяли клавишу — предупредили в окне.
             audio.set_device(cfg.get("input_device", ""))
-        # Вызываем создание окна в главном потоке tkinter
+            copy_method = cfg.get("copy_method", "insert")   # ← новое
         overlay.root.after(0, lambda: open_settings_window(overlay.root, cfg, on_save))
 
     # Запуск трея (передаем функцию открытия настроек)

@@ -8,7 +8,7 @@ def open_settings_window(root, current_cfg, on_save_callback):
     """Открывает окно настроек поверх остальных."""
     win = tk.Toplevel(root)
     win.title("Настройки SuperDictate")
-    win.geometry("350x420") # <-- Увеличили высоту окна
+    win.geometry("350x460") # <-- Увеличили высоту окна
     win.attributes("-topmost", True)
     win.resizable(False, False)
 
@@ -57,11 +57,31 @@ def open_settings_window(root, current_cfg, on_save_callback):
     sound_var = tk.BooleanVar(value=current_cfg.get("sound_enabled", True))
     tk.Checkbutton(win, text="Включить звуковые сигналы", variable=sound_var, font=("Segoe UI", 10)).pack(pady=(15, 5))
 
+    # --- Метод копирования ---
+    tk.Label(win, text="Метод копирования контекста:", font=("Segoe UI", 10)).pack(pady=(10, 5))
+    copy_method_var = tk.StringVar(value=current_cfg.get("copy_method", "insert"))
+    combo_copy = ttk.Combobox(
+        win,
+        textvariable=copy_method_var,
+        values=["insert", "ctrl_c"],
+        state="readonly",
+        width=15,
+    )
+    combo_copy.pack()
+    tk.Label(
+        win,
+        text="insert = Ctrl+Insert (безопасно)\nctrl_c = Ctrl+C (может убить процесс в терминале)",
+        font=("Segoe UI", 8),
+        fg="#666666",
+        justify="center",
+    ).pack()
+
     def save():
         new_cfg = current_cfg.copy()
         new_cfg["hotkey"] = entry_hotkey.get().strip().lower()
         new_cfg["overlay_position"] = overlay_var.get()
         new_cfg["sound_enabled"] = sound_var.get()
+        new_cfg["copy_method"] = copy_method_var.get()
         
         # Сохраняем индекс микрофона
         selected_dev_name = device_var.get()

@@ -4,8 +4,12 @@ class BasePlatform(ABC):
     """Абстракция над платформозависимыми операциями."""
 
     @abstractmethod
-    def send_copy(self) -> None:
-        """Симулировать Ctrl+C."""
+    def send_copy(self, method: str = "insert") -> None:
+        """
+        Скопировать выделенный текст.
+        method='insert'  → Ctrl+Insert — безопасно, не отправляет SIGINT (по умолчанию).
+        method='ctrl_c'  → Ctrl+C — работает везде, но в терминалах/SSH убьёт процесс.
+        """
         pass
 
     @abstractmethod

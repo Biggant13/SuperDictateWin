@@ -17,9 +17,11 @@ DEFAULT_CONFIG = {
     "model_path": "./gigaam-v3-e2e-rnnt-onnx",
     "language": "ru",
     "overlay_position": "bottom",
-    "beep_volume": 0.05,  # Громкость от 0.0 до 1.0 (0.05 — очень тихо)
+    "beep_volume": 0.05,
     "sound_enabled": True,
     "input_device": "",
+    "copy_method": "insert",        # "insert" (Ctrl+Insert, безопасно) | "ctrl_c" (может убить процесс в терминале)
+    "smart_insertion": True,        # пригодится в P5
 }
 
 def load_config():

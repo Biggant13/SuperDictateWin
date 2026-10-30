@@ -4,6 +4,7 @@ from .base import BasePlatform
 from pynput import keyboard
 
 VK_CONTROL = 0x11
+VK_INSERT  = 0x2D 
 VK_C = 0x43
 VK_V = 0x56
 VK_SHIFT = 0x10
@@ -21,11 +22,17 @@ class WindowsPlatform(BasePlatform):
         ctypes.windll.user32.keybd_event(vk, 0, KEYEVENTF_KEYUP if up else 0, 0)
         time.sleep(0.01)
 
-    def send_copy(self) -> None:
-        self._send_key(VK_CONTROL)
-        self._send_key(VK_C)
-        self._send_key(VK_C, up=True)
-        self._send_key(VK_CONTROL, up=True)
+    def send_copy(self, method: str = "insert") -> None:
+        if method == "ctrl_c":
+            self._send_key(VK_CONTROL)
+            self._send_key(VK_C)
+            self._send_key(VK_C, up=True)
+            self._send_key(VK_CONTROL, up=True)
+        else:
+            self._send_key(VK_CONTROL)
+            self._send_key(VK_INSERT)
+            self._send_key(VK_INSERT, up=True)
+            self._send_key(VK_CONTROL, up=True)
 
     def send_paste(self) -> None:
         u = ctypes.windll.user32
