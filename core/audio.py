@@ -44,12 +44,10 @@ class AudioRecorder:
             print(f"[Audio] 🎤 Запись... (устройство: {self.device or 'по умолчанию'})")
         except Exception as e:
             print(f"[Audio] Ошибка выбранного микрофона: {e}. Откат к стандартному.")
-            self.device = None
+            # self.device НЕ трогаем — только этот раз пишем на дефолт
             self.stream = sd.InputStream(
-                samplerate=SAMPLE_RATE, 
-                channels=CHANNELS,
-                dtype="float32", 
-                callback=self._callback
+                samplerate=SAMPLE_RATE, channels=CHANNELS, dtype="float32",
+                callback=self._callback, device=None
             )
             self.stream.start()
             print("[Audio] 🎤 Запись... (стандартное устройство)")
