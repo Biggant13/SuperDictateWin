@@ -1,3 +1,10 @@
+import faulthandler
+import os
+from core.config import BASE_DIR  # либо дублировать логику пути
+
+_crash_log = open(os.path.join(BASE_DIR, "crash.log"), "w", encoding="utf-8")
+faulthandler.enable(file=_crash_log, all_threads=True)
+
 import signal
 import threading
 from core.platform import get_platform
@@ -68,24 +75,50 @@ def main():
             logger.error(f"[Main] on_press: {e}")
 
     def on_release(key):
-        nk = normalize_key(key)
-        pressed_keys.discard(nk)
-        if audio.recording and nk in hotkey_set:
-            audio.stop()
-            if sound_state[0]:
-                beep_stop(beep_vol)
-            audio_data = audio.get_audio()
+        try:
+            nk = normalize_key(key)
+            pressed_keys.discard(nk)
+            if audio.recording and nk in hotkey_set:
+                audio.stop()
+                if sound_state[0]:
+                    beep_stop(beep_vol)
+                audio_data = audio.get_audio()
 
-            def _process():
-                ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
-                transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
+                def _process():
+                    ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
+                    transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
 
-            threading.Thread(target=_process, daemon=True).start()
+                threading.Thread(target=_process, daemon=True).start()
+        except Exception as e:
+            logger.error(f"[Main] on_release: {e}")
 
     platform.start_key_listener(on_press, on_release)
 
+    def _watchdog():
+        import time
+        while True:
+            time.sleep(30)
+            try:
+                listener_alive = getattr(platform, "_listener", None)
+                alive = bool(listener_alive and listener_alive.is_alive())
+                mem = "?"
+                try:
+                    import psutil
+                    mem = f"{psutil.Process().memory_info().rss // (1024*1024)}MB"
+                except Exception:
+                    pass
+                logger.info(f"[Watchdog] listener_alive={alive}, rec={audio.recording}, "
+                            f"lock={processing_lock.locked()}, rss={mem}")
+                if not alive:
+                    logger.warning("[Watchdog] listener мёртв — перезапуск")
+                    platform.start_key_listener(on_press, on_release)
+            except Exception as e:
+                logger.error(f"[Watchdog] {e}")
+
+    threading.Thread(target=_watchdog, daemon=True).start()
+
     def _shutdown():
-        platform.stop_key_listener() # <-- Останавливаем слушатель
+        platform.stop_key_listener()
         try: overlay.root.after(0, overlay.quit)
         except Exception: pass
 
