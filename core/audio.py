@@ -63,10 +63,13 @@ class AudioRecorder:
             return
         self.recording = False
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
-            self.stream = None
-        print("[Audio] ⏹ Запись остановлена.")
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception as e:
+                print(f"[Audio] Ошибка при остановке потока: {e}")
+            finally:
+                self.stream = None
 
     def get_audio(self):
         chunks = []

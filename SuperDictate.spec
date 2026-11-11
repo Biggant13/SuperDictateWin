@@ -37,6 +37,7 @@ hiddenimports += [
     'PIL._tkinter_finder',
     'onnx_asr',
     'onnxruntime',
+    'psutil',
 ]
 
 if sys.platform == 'win32':

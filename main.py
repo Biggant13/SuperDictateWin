@@ -2,7 +2,9 @@ import faulthandler
 import os
 from core.config import BASE_DIR  # либо дублировать логику пути
 
-_crash_log = open(os.path.join(BASE_DIR, "crash.log"), "w", encoding="utf-8")
+_crash_log = open(os.path.join(BASE_DIR, "crash.log"), "a", encoding="utf-8")
+_crash_log.write(f"\n--- start ---\n")
+_crash_log.flush()
 faulthandler.enable(file=_crash_log, all_threads=True)
 
 import signal
