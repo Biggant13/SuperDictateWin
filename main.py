@@ -1,5 +1,6 @@
 import faulthandler
 import os
+import time
 from core.config import BASE_DIR  # либо дублировать логику пути
 
 _crash_log = open(os.path.join(BASE_DIR, "crash.log"), "a", encoding="utf-8")
@@ -107,20 +108,21 @@ def main():
     platform.start_key_listener(on_press, on_release)
 
     def _watchdog():
-        import time
+        import psutil
+        proc = psutil.Process()
+        proc.cpu_percent(interval=None)  # baseline
+
         while True:
             time.sleep(30)
             try:
-                listener_alive = getattr(platform, "_listener", None)
-                alive = bool(listener_alive and listener_alive.is_alive())
-                mem = "?"
-                try:
-                    import psutil
-                    mem = f"{psutil.Process().memory_info().rss // (1024*1024)}MB"
-                except Exception:
-                    pass
-                logger.info(f"[Watchdog] listener_alive={alive}, rec={audio.recording}, "
-                            f"lock={processing_lock.locked()}, rss={mem}")
+                cpu = proc.cpu_percent(interval=None)
+                mem = proc.memory_info().rss // (1024 * 1024)
+                listener = getattr(platform, "_listener", None)
+                alive = bool(listener and listener.is_alive())
+                logger.info(
+                    f"[Watchdog] listener={alive} rec={audio.recording} "
+                    f"lock={processing_lock.locked()} rss={mem}MB cpu={cpu:.1f}%"
+                )
                 if not alive:
                     logger.warning("[Watchdog] listener мёртв — перезапуск")
                     platform.start_key_listener(on_press, on_release)
