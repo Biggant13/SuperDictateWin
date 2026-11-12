@@ -24,6 +24,9 @@ from core.sounds import beep_error, beep_start, beep_stop, shutdown as shutdown_
 from core.settings import open_settings_window
 from core.stats import add_words # <-- Импортируем статистику
 from core.utils import parse_hotkey, normalize_key, get_context
+import queue
+
+task_queue = queue.Queue()
 
 def main():
     print("=" * 50)
@@ -38,13 +41,26 @@ def main():
     audio = AudioRecorder(device=cfg.get("input_device", ""))
     transcriber = Transcriber(cfg)
     transcriber.load_model()
-    
+
+    last_press_time = [time.time()]
     pressed_keys = set()
     processing_lock = threading.Lock()
     smart_insertion = [bool(cfg.get("smart_insertion", True))]
     beep_vol = float(cfg.get("beep_volume", 0.05))
     
     sound_state = [cfg.get("sound_enabled", True)]
+
+    def _worker():
+        while True:
+            task = task_queue.get()
+            if task is None:  # сигнал к завершению
+                break
+            try:
+                task()
+            except Exception as e:
+                logger.error(f"[Worker] {e}")
+
+    threading.Thread(target=_worker, daemon=True).start()
 
     def toggle_sound():
         sound_state[0] = not sound_state[0]
@@ -63,6 +79,7 @@ def main():
     # --- Колбэки для pynput ---
     def on_press(key):
         try:
+            last_press_time[0] = time.time()
             nk = normalize_key(key)
             pressed_keys.add(nk)
             if audio.recording or processing_lock.locked():
@@ -81,31 +98,21 @@ def main():
         try:
             nk = normalize_key(key)
             pressed_keys.discard(nk)
-            
+
             if audio.recording and nk in hotkey_set:
-                # ВСЮ тяжелую работу выносим в отдельный поток!
-                # Функция on_release должна возвращаться моментально, 
-                # иначе Windows посчитает, что хук завис, и отключит его.
-                threading.Thread(target=_process_audio, daemon=True).start()
+                task_queue.put(_process_audio)
         except Exception as e:
             logger.error(f"[Main] on_release: {e}")
 
-    def _process_audio():
-        try:
-            audio.stop()
-            if sound_state[0]:
-                beep_stop(beep_vol)
-                
-            audio_data = audio.get_audio()
-
-            # Читаем контекст и распознаем
-            ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
-            transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
-            
-        except Exception as e:
-            logger.error(f"[Main] _process_audio: {e}")
-
     platform.start_key_listener(on_press, on_release)
+
+    def _process_audio():
+        audio.stop()
+        if sound_state[0]:
+            beep_stop(beep_vol)
+        audio_data = audio.get_audio()
+        ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
+        transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
 
     def _watchdog():
         import psutil
@@ -119,13 +126,37 @@ def main():
                 mem = proc.memory_info().rss // (1024 * 1024)
                 listener = getattr(platform, "_listener", None)
                 alive = bool(listener and listener.is_alive())
+
+                sec_since_press = int(time.time() - last_press_time[0])
+                hook_stale = alive and sec_since_press > 600  # 10 минут
+
                 logger.info(
                     f"[Watchdog] listener={alive} rec={audio.recording} "
-                    f"lock={processing_lock.locked()} rss={mem}MB cpu={cpu:.1f}%"
+                    f"lock={processing_lock.locked()} rss={mem}MB cpu={cpu:.1f}% "
+                    f"no_press={sec_since_press}s"
                 )
+
                 if not alive:
                     logger.warning("[Watchdog] listener мёртв — перезапуск")
-                    platform.start_key_listener(on_press, on_release)
+                    try:
+                        platform.stop_key_listener()      # ← на всякий случай
+                        platform.start_key_listener(on_press, on_release)
+                        last_press_time[0] = time.time()
+                    except Exception as e:
+                        logger.error(f"[Watchdog] не удалось перезапустить: {e}")
+
+                elif hook_stale:
+                    logger.warning(
+                        f"[Watchdog] нет нажатий {sec_since_press}s — "
+                        f"похоже, хук снят, перезапускаю listener"
+                    )
+                    try:
+                        platform.stop_key_listener()
+                        platform.start_key_listener(on_press, on_release)
+                        last_press_time[0] = time.time()
+                    except Exception as e:
+                        logger.error(f"[Watchdog] перезапуск хука упал: {e}")
+
             except Exception as e:
                 logger.error(f"[Watchdog] {e}")
 
