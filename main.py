@@ -19,7 +19,7 @@ from core.audio import AudioRecorder
 from core.transcriber import Transcriber
 from core.ui import RecordingOverlay
 from core.tray import start_tray
-from core.sounds import beep_error, beep_start, beep_stop
+from core.sounds import beep_error, beep_start, beep_stop, shutdown as shutdown_sounds
 from core.settings import open_settings_window
 from core.stats import add_words # <-- Импортируем статистику
 from core.utils import parse_hotkey, normalize_key, get_context
@@ -129,10 +129,18 @@ def main():
 
     threading.Thread(target=_watchdog, daemon=True).start()
 
+    _shutdown_done = [False]
+
     def _shutdown():
-        platform.stop_key_listener()
+        if _shutdown_done[0]:
+            return
+        _shutdown_done[0] = True
+        try: platform.stop_key_listener()
+        except Exception as e: logger.error(f"[Shutdown] listener: {e}")
+        try: shutdown_sounds()
+        except Exception as e: logger.error(f"[Shutdown] sounds: {e}")
         try: overlay.root.after(0, overlay.quit)
-        except Exception: pass
+        except Exception as e: logger.error(f"[Shutdown] overlay: {e}")
 
     # --- Окно настроек ---
     def open_settings():
@@ -147,10 +155,11 @@ def main():
 
     # Запуск трея (передаем функцию открытия настроек)
     start_tray(
-        on_quit=_shutdown, 
-        on_settings=open_settings, 
-        sound_state=sound_state, 
-        toggle_sound=toggle_sound
+        on_quit=_shutdown,
+        on_settings=open_settings,
+        sound_state=sound_state,
+        toggle_sound=toggle_sound,
+        tk_root_ref=[overlay.root],
     )
 
     def _sigint(sig, frame):
