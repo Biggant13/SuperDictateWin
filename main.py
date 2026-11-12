@@ -81,10 +81,20 @@ def main():
         try:
             last_press_time[0] = time.time()
             nk = normalize_key(key)
+            
+            # Игнорируем всё, что не является частью нашего хоткея!
+            if nk not in hotkey_set:
+                return
+                
             pressed_keys.add(nk)
+
+        #    logger.info(f"[DEBUG KEY] Нажато: {nk}, В памяти: {pressed_keys}") # <-- ДОБАВИТЬ
+
+            
             if audio.recording or processing_lock.locked():
                 return
-            if pressed_keys == hotkey_set:   # если ещё не применяли P-«строгая проверка» — оставьте issubset
+                
+            if pressed_keys == hotkey_set:
                 if audio.start():
                     if sound_state[0]:
                         beep_start(beep_vol)
@@ -97,8 +107,11 @@ def main():
     def on_release(key):
         try:
             nk = normalize_key(key)
-            pressed_keys.discard(nk)
-
+            
+            # Если отпускают клавишу из хоткея — убираем из памяти
+            if nk in hotkey_set:
+                pressed_keys.discard(nk)
+                
             if audio.recording and nk in hotkey_set:
                 task_queue.put(_process_audio)
         except Exception as e:
@@ -107,12 +120,18 @@ def main():
     platform.start_key_listener(on_press, on_release)
 
     def _process_audio():
-        audio.stop()
-        if sound_state[0]:
-            beep_stop(beep_vol)
-        audio_data = audio.get_audio()
-        ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
-        transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
+        try:
+            audio.stop()
+            if sound_state[0]:
+                beep_stop(beep_vol)
+            audio_data = audio.get_audio()
+            ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
+            transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
+        except Exception as e:
+            logger.error(f"[Main] _process_audio: {e}")
+        finally:
+            # ЯДЕРНЫЙ УДАР: очищаем память от любых залипших клавиш (включая Ctrl+V)
+            pressed_keys.clear()
 
     def _watchdog():
         import psutil

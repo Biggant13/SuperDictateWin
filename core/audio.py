@@ -63,37 +63,21 @@ class AudioRecorder:
         if not self.recording:
             return
         self.recording = False
-        
+
         stream = self.stream
         self.stream = None
-        
+
         if stream:
-            def _do_stop():
+            # Просто запускаем остановку в фоне и НЕ ЖДЁМ её.
+            def _close():
                 try:
                     stream.stop()
                     stream.close()
                 except Exception as e:
-                    print(f"[Audio] Ошибка при остановке потока: {e}")
+                    print(f"[Audio] Ошибка при закрытии потока: {e}")
+            threading.Thread(target=_close, daemon=True).start()
 
-            # Запускаем остановку в отдельном потоке
-            t = threading.Thread(target=_do_stop, daemon=True)
-            t.start()
-            
-            # Ждём максимум 2 секунды
-            t.join(timeout=2.0)
-            
-            if t.is_alive():
-                print("[Audio] ⚠️ stream.stop() завис > 2с, форсирую abort()")
-                try:
-                    stream.abort()
-                except Exception:
-                    pass
-                try:
-                    stream.close()
-                except Exception:
-                    pass
-                    
-        print("[Audio] ⏹ Запись остановлена.")
+        print("[Audio] ⏹ Запись остановлена (поток закрывается в фоне).")
 
     def get_audio(self):
         chunks = []

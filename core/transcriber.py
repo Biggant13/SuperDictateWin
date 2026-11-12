@@ -17,6 +17,7 @@ class Transcriber:
         self.language = config.get("language", "ru")
         self.base_dir = BASE_DIR
         self.model = None
+        self.use_gpu = config.get("use_gpu", True)
 
         # Карта соответствия коротких имен к их реальным ID на Hugging Face
         self.model_aliases = {
@@ -26,6 +27,12 @@ class Transcriber:
     def load_model(self):
         # Отключаем прогресс-бары (в оконном режиме они ломают программу)
         disable_progress_bars()
+        if self.use_gpu:
+            # Сначала пробуем DirectML (видеокарта), в конце — CPU (процессор) для подстраховки
+            providers = ["DmlExecutionProvider", "CPUExecutionProvider"]
+        else:
+            # Только процессор
+            providers = ["CPUExecutionProvider"]
         
         model_path = self.model_path
         if model_path:
@@ -39,7 +46,7 @@ class Transcriber:
 
         if os.path.exists(expected_file):
             print(f"[Transcriber] Загрузка из локальной папки: '{model_path}'")
-            self.model = onnx_asr.load_model(self.model_name, model_path)
+            self.model = onnx_asr.load_model(self.model_name, model_path, providers=providers)
         else:
             repo_id = self.model_aliases.get(self.model_name, self.model_name)
             
@@ -74,11 +81,12 @@ class Transcriber:
                 except Exception as e:
                     print(f"[Transcriber] Ошибка скачивания: {e}")
                     print("[Transcriber] Откат к стандартному кэшу Hugging Face...")
-                    self.model = onnx_asr.load_model(self.model_name)
+                    self.model = onnx_asr.load_model(self.model_name, providers=providers)
             else:
                 print(f"[Transcriber] Скачивание с Hugging Face в кэш: '{self.model_name}'")
-                self.model = onnx_asr.load_model(self.model_name)
-            
+                self.model = onnx_asr.load_model(self.model_name, providers=providers)
+
+
         print("[Transcriber] Модель готова.")
 
     def transcribe_and_paste(self, audio, get_context_fn, processing_lock):

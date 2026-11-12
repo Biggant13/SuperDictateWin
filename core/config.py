@@ -21,7 +21,8 @@ DEFAULT_CONFIG = {
     "sound_enabled": True,
     "input_device": "",
     "copy_method": "insert",        # "insert" (Ctrl+Insert, безопасно) | "ctrl_c" (может убить процесс в терминале)
-    "smart_insertion": True,        # пригодится в P5
+    "smart_insertion": True,
+    "use_gpu": True,
 }
 
 def load_config():

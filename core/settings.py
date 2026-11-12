@@ -8,7 +8,7 @@ def open_settings_window(root, current_cfg, on_save_callback):
     """Открывает окно настроек поверх остальных."""
     win = tk.Toplevel(root)
     win.title("Настройки SuperDictate")
-    win.geometry("350x460") # <-- Увеличили высоту окна
+    win.geometry("350x600") # <-- Увеличили высоту окна
     win.attributes("-topmost", True)
     win.resizable(False, False)
 
@@ -56,6 +56,10 @@ def open_settings_window(root, current_cfg, on_save_callback):
     # --- Звук ---
     sound_var = tk.BooleanVar(value=current_cfg.get("sound_enabled", True))
     tk.Checkbutton(win, text="Включить звуковые сигналы", variable=sound_var, font=("Segoe UI", 10)).pack(pady=(15, 5))
+    
+    # --- GPU (Видеокарта) ---
+    gpu_var = tk.BooleanVar(value=current_cfg.get("use_gpu", True))
+    tk.Checkbutton(win, text="Использовать видеокарту (GPU)", variable=gpu_var, font=("Segoe UI", 10)).pack(pady=(5, 5))
 
     # --- Метод копирования ---
     tk.Label(win, text="Метод копирования контекста:", font=("Segoe UI", 10)).pack(pady=(10, 5))
@@ -81,19 +85,49 @@ def open_settings_window(root, current_cfg, on_save_callback):
         new_cfg["hotkey"] = entry_hotkey.get().strip().lower()
         new_cfg["overlay_position"] = overlay_var.get()
         new_cfg["sound_enabled"] = sound_var.get()
-        new_cfg["copy_method"] = copy_method_var.get()
+        new_cfg["use_gpu"] = gpu_var.get()
         
-        # Сохраняем индекс микрофона
-        selected_dev_name = device_var.get()
-        new_cfg["input_device"] = device_map.get(selected_dev_name, "")
+        # Если у вас есть эти поля (copy_method, микрофон) — оставляем их:
+        # new_cfg["copy_method"] = copy_method_var.get()
+        # selected_dev_name = device_var.get()
+        # new_cfg["input_device"] = device_map.get(selected_dev_name, "")
+
+        # 1) Валидация хоткея
+        try:
+            from core.utils import parse_hotkey
+            parse_hotkey(new_cfg["hotkey"])
+        except ValueError as e:
+            messagebox.showerror("Ошибка", f"Некорректная комбинация: {e}", parent=win)
+            return
 
         try:
+            # ЗАПОМИНАЕМ старые значения ДО того, как они изменятся
+            old_hotkey = current_cfg.get("hotkey", "")
+            old_gpu = current_cfg.get("use_gpu", True)
+
+            # 2) Записываем в файл
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(new_cfg, f, indent=2, ensure_ascii=False)
             
+            # 3) Применяем настройки на лету (внимание: эта функция изменит current_cfg!)
             on_save_callback(new_cfg)
-            messagebox.showinfo("Успех", "Настройки сохранены!\n(Если вы меняли клавишу, перезапустите приложение).", parent=win)
+            
+            # 4) Проверяем, что изменилось (сравниваем сохраненные старые значения с новыми)
+            hotkey_changed = old_hotkey != new_cfg["hotkey"]
+            gpu_changed = old_gpu != new_cfg["use_gpu"]
+            
+            msg = "Настройки сохранены!"
+            
+            if hotkey_changed and gpu_changed:
+                msg += "\n\nВы изменили хоткей и видеокарту. Пожалуйста, перезапустите приложение."
+            elif hotkey_changed:
+                msg += "\n\nВы изменили горячую клавишу. Пожалуйста, перезапустите приложение."
+            elif gpu_changed:
+                msg += "\n\nВы изменили настройку видеокарты. Пожалуйста, перезапустите приложение."
+            
+            messagebox.showinfo("Успех", msg, parent=win)
             win.destroy()
+            
         except Exception as e:
             messagebox.showerror("Ошибка", f"Не удалось сохранить: {e}", parent=win)
 
