@@ -29,18 +29,71 @@ import queue
 task_queue = queue.Queue()
 
 def main():
-    print("=" * 50)
-    print("  SuperDictate для Windows (GigaAM v3)")
-    print("=" * 50)
-    platform = get_platform()
+    # 1. Показываем приветственное окно
+    from core.splash import SplashScreen
+    splash = SplashScreen()
+    state = {}
 
-    cfg = load_config()
+    def init_app():
+        try:
+            # Конфиг
+            splash.root.after(0, lambda: splash.set_status("Загрузка конфигурации..."))
+            cfg = load_config()
+            platform = get_platform()
+            
+            # Проверяем, есть ли модель локально, чтобы показать правильный статус
+            import os
+            from core.config import BASE_DIR
+            model_path = cfg.get("model_path", "")
+            if model_path:
+                if not os.path.isabs(model_path):
+                    model_path = os.path.normpath(os.path.join(BASE_DIR, model_path))
+            else:
+                model_path = os.path.join(BASE_DIR, "gigaam-v3-e2e-rnnt-onnx")
+            
+            expected_file = os.path.join(model_path, "v3_e2e_rnnt_encoder.onnx")
+            
+            if os.path.exists(expected_file):
+                status_text = "Загрузка локальной модели..."
+            else:
+                status_text = "Скачивание модели из сети ~850 MB (это может занять время)..."
+                
+            splash.root.after(0, lambda: splash.set_status(status_text))
+            
+            # Аудио и Модель
+            audio = AudioRecorder(device=cfg.get("input_device", ""))
+            transcriber = Transcriber(cfg)
+            transcriber.load_model()
+            
+            # Сохраняем всё в словарь, чтобы передать в главный поток
+            state['cfg'] = cfg
+            state['platform'] = platform
+            state['audio'] = audio
+            state['transcriber'] = transcriber
+
+        except Exception as e:
+            state['error'] = e
+        finally:
+            # Даем пользователю 1 секунду, чтобы увидеть финальный статус, и закрываем
+            import time
+            time.sleep(1.0)
+            splash.root.after(0, splash.close)
+
+    # Запускаем загрузку в фоне, а сами крутим сплэш
+    threading.Thread(target=init_app, daemon=True).start()
+    splash.run()
+
+    if 'error' in state:
+        print(f"[Main] Ошибка при инициализации: {state['error']}")
+        return
+
+    # 2. Переносим переменные из state
+    cfg = state['cfg']
+    platform = state['platform']
+    audio = state['audio']
+    transcriber = state['transcriber']
     hotkey_set = parse_hotkey(cfg["hotkey"])
     copy_method = cfg.get("copy_method", "insert")
-    
-    audio = AudioRecorder(device=cfg.get("input_device", ""))
-    transcriber = Transcriber(cfg)
-    transcriber.load_model()
 
     last_press_time = [time.time()]
     pressed_keys = set()
