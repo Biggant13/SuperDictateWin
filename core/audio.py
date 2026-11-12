@@ -1,6 +1,7 @@
 import queue
 import numpy as np
 import sounddevice as sd
+import threading 
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -62,14 +63,37 @@ class AudioRecorder:
         if not self.recording:
             return
         self.recording = False
-        if self.stream:
-            try:
-                self.stream.stop()
-                self.stream.close()
-            except Exception as e:
-                print(f"[Audio] Ошибка при остановке потока: {e}")
-            finally:
-                self.stream = None
+        
+        stream = self.stream
+        self.stream = None
+        
+        if stream:
+            def _do_stop():
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception as e:
+                    print(f"[Audio] Ошибка при остановке потока: {e}")
+
+            # Запускаем остановку в отдельном потоке
+            t = threading.Thread(target=_do_stop, daemon=True)
+            t.start()
+            
+            # Ждём максимум 2 секунды
+            t.join(timeout=2.0)
+            
+            if t.is_alive():
+                print("[Audio] ⚠️ stream.stop() завис > 2с, форсирую abort()")
+                try:
+                    stream.abort()
+                except Exception:
+                    pass
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+                    
+        print("[Audio] ⏹ Запись остановлена.")
 
     def get_audio(self):
         chunks = []

@@ -80,19 +80,29 @@ def main():
         try:
             nk = normalize_key(key)
             pressed_keys.discard(nk)
+            
             if audio.recording and nk in hotkey_set:
-                audio.stop()
-                if sound_state[0]:
-                    beep_stop(beep_vol)
-                audio_data = audio.get_audio()
-
-                def _process():
-                    ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
-                    transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
-
-                threading.Thread(target=_process, daemon=True).start()
+                # ВСЮ тяжелую работу выносим в отдельный поток!
+                # Функция on_release должна возвращаться моментально, 
+                # иначе Windows посчитает, что хук завис, и отключит его.
+                threading.Thread(target=_process_audio, daemon=True).start()
         except Exception as e:
             logger.error(f"[Main] on_release: {e}")
+
+    def _process_audio():
+        try:
+            audio.stop()
+            if sound_state[0]:
+                beep_stop(beep_vol)
+                
+            audio_data = audio.get_audio()
+
+            # Читаем контекст и распознаем
+            ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
+            transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
+            
+        except Exception as e:
+            logger.error(f"[Main] _process_audio: {e}")
 
     platform.start_key_listener(on_press, on_release)
 
