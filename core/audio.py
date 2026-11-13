@@ -61,7 +61,8 @@ class AudioRecorder:
 
     def stop(self):
         if not self.recording:
-            return
+            return False
+        
         self.recording = False
 
         stream = self.stream
@@ -78,6 +79,7 @@ class AudioRecorder:
             threading.Thread(target=_close, daemon=True).start()
 
         print("[Audio] ⏹ Запись остановлена (поток закрывается в фоне).")
+        return True 
 
     def get_audio(self):
         chunks = []

@@ -3,13 +3,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import sounddevice as sd
 from core.config import CONFIG_PATH
+from core.autostart import is_enabled, set_enabled
 
 def open_settings_window(root, current_cfg, on_save_callback):
     """Открывает окно настроек в тёмной теме."""
     win = tk.Toplevel(root)
     win.title("Настройки SuperDictate")
-    win.geometry("400x750")  # Увеличили окно под подсказки
-    win.configure(bg="#202020")  # Тёмный фон окна
+    win.geometry("400x820")  # Увеличили окно, чтобы влезла автозагрузка
+    win.configure(bg="#202020")
     win.attributes("-topmost", True)
     win.resizable(False, False)
 
@@ -81,7 +82,7 @@ def open_settings_window(root, current_cfg, on_save_callback):
     combo_overlay.pack(ipady=2)
     create_hint("Где показывать плашку «Идёт запись...» — вверху или внизу экрана.")
 
-    # --- Звук ---
+    # --- Чекбоксы (Звук, GPU, Автозапуск) ---
     check_style = {"bg": "#202020", "fg": "#ffffff", "selectcolor": entry_bg, 
                    "activebackground": "#202020", "activeforeground": "#ffffff", "font": label_font}
 
@@ -89,10 +90,14 @@ def open_settings_window(root, current_cfg, on_save_callback):
     tk.Checkbutton(win, text="Включить звуковые сигналы", variable=sound_var, **check_style).pack(pady=(15, 0))
     create_hint("Короткие звуки (бипы), подтверждающие старт и стоп записи.")
 
-    # --- GPU (Видеокарта) ---
     gpu_var = tk.BooleanVar(value=current_cfg.get("use_gpu", True))
     tk.Checkbutton(win, text="Использовать видеокарту (GPU)", variable=gpu_var, **check_style).pack(pady=(10, 0))
     create_hint("Ускоряет распознавание через видеокарту. Требуется перезапуск.\nЕсли видеокарта не поддерживается, программа сама переключится на процессор.")
+
+    # --- Автозапуск ---
+    autostart_var = tk.BooleanVar(value=is_enabled())
+    tk.Checkbutton(win, text="Запускать при старте Windows", variable=autostart_var, **check_style).pack(pady=(10, 0))
+    create_hint("Приложение будет тихо сворачиваться в трей при включении компьютера.")
 
     # --- Метод копирования ---
     create_label("Метод копирования контекста:", pady=(15, 5))
@@ -130,9 +135,14 @@ def open_settings_window(root, current_cfg, on_save_callback):
             old_hotkey = current_cfg.get("hotkey", "")
             old_gpu = current_cfg.get("use_gpu", True)
 
+            # 2) Записываем в файл
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(new_cfg, f, indent=2, ensure_ascii=False)
             
+            # 3) Применяем автозапуск (если изменился)
+            set_enabled(autostart_var.get())
+            
+            # 4) Применяем настройки на лету
             on_save_callback(new_cfg)
             
             hotkey_changed = old_hotkey != new_cfg["hotkey"]
