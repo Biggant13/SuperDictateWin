@@ -32,6 +32,7 @@ OutputDir=dist_installer
 OutputBaseFilename=SuperDictate-Setup-{#MyAppVersion}
 UninstallDisplayIcon={app}\{#MyAppExeName}
 WizardStyle=modern
+SetupIconFile=app.ico
 
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
