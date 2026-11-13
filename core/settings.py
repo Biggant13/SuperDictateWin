@@ -8,7 +8,7 @@ def open_settings_window(root, current_cfg, on_save_callback):
     """Открывает окно настроек в тёмной теме."""
     win = tk.Toplevel(root)
     win.title("Настройки SuperDictate")
-    win.geometry("380x680")  # Увеличили высоту, чтобы всё влезло
+    win.geometry("400x750")  # Увеличили окно под подсказки
     win.configure(bg="#202020")  # Тёмный фон окна
     win.attributes("-topmost", True)
     win.resizable(False, False)
@@ -31,20 +31,26 @@ def open_settings_window(root, current_cfg, on_save_callback):
     # --- Общие стили ---
     label_font = ("Segoe UI", 10)
     label_fg = "#cccccc"
+    hint_font = ("Segoe UI", 8)
+    hint_fg = "#888888"
     entry_bg = "#2d2d2d"
     entry_fg = "#ffffff"
     entry_hl = "#555555"
 
-    def create_label(text, pady=(15, 5), fg=label_fg, font=label_font):
-        tk.Label(win, text=text, bg="#202020", fg=fg, font=font).pack(pady=pady)
+    def create_label(text, pady=(15, 5)):
+        tk.Label(win, text=text, bg="#202020", fg=label_fg, font=label_font).pack(pady=pady)
+
+    def create_hint(text):
+        tk.Label(win, text=text, bg="#202020", fg=hint_fg, font=hint_font, wraplength=350, justify="center").pack(pady=(0, 5))
 
     # --- Горячая клавиша ---
-    create_label("Горячая клавиша (напр. f9):", pady=(15, 5))
+    create_label("Горячая клавиша:", pady=(15, 5))
     entry_hotkey = tk.Entry(win, justify="center", font=("Segoe UI", 11), 
                             bg=entry_bg, fg=entry_fg, insertbackground=entry_fg,
                             relief="flat", highlightthickness=1, highlightbackground=entry_hl, highlightcolor="#4CAF50")
     entry_hotkey.insert(0, current_cfg.get("hotkey", "f9"))
     entry_hotkey.pack(ipady=4, padx=20, fill="x")
+    create_hint("Клавиша, которую вы нажимаете для старта и остановки записи.\nПримеры: f9, ctrl+shift+a, alt+space")
 
     # --- Микрофон ---
     create_label("Микрофон:", pady=(15, 5))
@@ -64,25 +70,29 @@ def open_settings_window(root, current_cfg, on_save_callback):
                 current_device_name = name
 
     device_var = tk.StringVar(value=current_device_name)
-    combo_device = ttk.Combobox(win, textvariable=device_var, values=input_devices, state="readonly", width=40)
+    combo_device = ttk.Combobox(win, textvariable=device_var, values=input_devices, state="readonly", width=45)
     combo_device.pack(ipady=2)
+    create_hint("Устройство, с которого записывается звук. Если не знаете, что выбрать — оставьте «По умолчанию».")
 
     # --- Позиция оверлея ---
     create_label("Позиция оверлея:", pady=(15, 5))
     overlay_var = tk.StringVar(value=current_cfg.get("overlay_position", "bottom"))
     combo_overlay = ttk.Combobox(win, textvariable=overlay_var, values=["bottom", "top"], state="readonly", width=15)
     combo_overlay.pack(ipady=2)
+    create_hint("Где показывать плашку «Идёт запись...» — вверху или внизу экрана.")
 
     # --- Звук ---
     check_style = {"bg": "#202020", "fg": "#ffffff", "selectcolor": entry_bg, 
                    "activebackground": "#202020", "activeforeground": "#ffffff", "font": label_font}
 
     sound_var = tk.BooleanVar(value=current_cfg.get("sound_enabled", True))
-    tk.Checkbutton(win, text="Включить звуковые сигналы", variable=sound_var, **check_style).pack(pady=(15, 5))
+    tk.Checkbutton(win, text="Включить звуковые сигналы", variable=sound_var, **check_style).pack(pady=(15, 0))
+    create_hint("Короткие звуки (бипы), подтверждающие старт и стоп записи.")
 
     # --- GPU (Видеокарта) ---
     gpu_var = tk.BooleanVar(value=current_cfg.get("use_gpu", True))
-    tk.Checkbutton(win, text="Использовать видеокарту (GPU)", variable=gpu_var, **check_style).pack(pady=5)
+    tk.Checkbutton(win, text="Использовать видеокарту (GPU)", variable=gpu_var, **check_style).pack(pady=(10, 0))
+    create_hint("Ускоряет распознавание через видеокарту. Требуется перезапуск.\nЕсли видеокарта не поддерживается, программа сама переключится на процессор.")
 
     # --- Метод копирования ---
     create_label("Метод копирования контекста:", pady=(15, 5))
@@ -95,14 +105,7 @@ def open_settings_window(root, current_cfg, on_save_callback):
         width=15,
     )
     combo_copy.pack(ipady=2)
-    tk.Label(
-        win,
-        text="insert = Ctrl+Insert (безопасно)\nctrl_c = Ctrl+C (может убить процесс в терминале)",
-        font=("Segoe UI", 8),
-        fg="#888888", # Сделали цвет светлее, чтобы читалось на тёмном фоне
-        bg="#202020",
-        justify="center",
-    ).pack(pady=(5, 0))
+    create_hint("insert: Ctrl+Insert (безопасно, не завершает программы в консоли).\nctrl_c: Ctrl+C (классическое копирование, может убить процесс в терминале).")
 
     def save():
         new_cfg = current_cfg.copy()
@@ -155,4 +158,4 @@ def open_settings_window(root, current_cfg, on_save_callback):
                          bg="#4CAF50", fg="white", 
                          activebackground="#45a049", activeforeground="white",
                          relief="flat", cursor="hand2")
-    btn_save.pack(pady=25, ipadx=20, ipady=5)
+    btn_save.pack(pady=20, ipadx=20, ipady=5)
