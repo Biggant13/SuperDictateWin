@@ -1,7 +1,7 @@
 import faulthandler
 import os
 import time
-from core.config import BASE_DIR  # либо дублировать логику пути
+from core.config import BASE_DIR
 
 _crash_log = open(os.path.join(BASE_DIR, "crash.log"), "a", encoding="utf-8")
 _crash_log.write(f"\n--- start ---\n")
@@ -10,21 +10,22 @@ faulthandler.enable(file=_crash_log, all_threads=True)
 
 import signal
 import threading
-from core.platform import get_platform
+import queue
+import json
 
+from core.platform import get_platform
 from core.logger import setup_logger
 logger = setup_logger()
 
-from core.config import load_config
+from core.config import load_config, CONFIG_PATH
 from core.audio import AudioRecorder
 from core.transcriber import Transcriber
 from core.ui import RecordingOverlay
 from core.tray import start_tray
 from core.sounds import beep_error, beep_start, beep_stop, shutdown as shutdown_sounds
 from core.settings import open_settings_window
-from core.stats import add_words # <-- Импортируем статистику
-from core.utils import parse_hotkey, normalize_key, get_context
-import queue
+from core.utils import parse_hotkey, get_context
+from core.hotkey import HotkeyManager
 
 task_queue = queue.Queue()
 
@@ -36,14 +37,10 @@ def main():
 
     def init_app():
         try:
-            # Конфиг
             splash.root.after(0, lambda: splash.set_status("Загрузка конфигурации..."))
             cfg = load_config()
             platform = get_platform()
             
-            # Проверяем, есть ли модель локально, чтобы показать правильный статус
-            import os
-            from core.config import BASE_DIR
             model_path = cfg.get("model_path", "")
             if model_path:
                 if not os.path.isabs(model_path):
@@ -60,12 +57,10 @@ def main():
                 
             splash.root.after(0, lambda: splash.set_status(status_text))
             
-            # Аудио и Модель
             audio = AudioRecorder(device=cfg.get("input_device", ""))
             transcriber = Transcriber(cfg)
             transcriber.load_model()
             
-            # Сохраняем всё в словарь, чтобы передать в главный поток
             state['cfg'] = cfg
             state['platform'] = platform
             state['audio'] = audio
@@ -73,41 +68,61 @@ def main():
 
         except Exception as e:
             state['error'] = e
+            import traceback
+            logger.error(f"[Main] Ошибка инициализации: {e}\n{traceback.format_exc()}")
         finally:
-            # Даем пользователю 1 секунду, чтобы увидеть финальный статус, и закрываем
-            import time
             time.sleep(1.0)
             splash.root.after(0, splash.close)
 
-    # Запускаем загрузку в фоне, а сами крутим сплэш
     threading.Thread(target=init_app, daemon=True).start()
     splash.run()
 
     if 'error' in state:
-        print(f"[Main] Ошибка при инициализации: {state['error']}")
         return
 
-    # 2. Переносим переменные из state
     cfg = state['cfg']
     platform = state['platform']
     audio = state['audio']
     transcriber = state['transcriber']
+    
     hotkey_set = parse_hotkey(cfg["hotkey"])
     copy_method = cfg.get("copy_method", "insert")
-
-    last_press_time = [time.time()]
-    pressed_keys = set()
-    last_stop_time = [0] 
-    processing_lock = threading.Lock()
     smart_insertion = [bool(cfg.get("smart_insertion", True))]
     beep_vol = float(cfg.get("beep_volume", 0.05))
-    
     sound_state = [cfg.get("sound_enabled", True)]
+    
+    processing_lock = threading.Lock()
+    last_press_time = [time.time()]
+
+    # --- Инициализация менеджера хоткеев ---
+    def start_recording():
+        if not audio.recording and not processing_lock.locked():
+            if audio.start():
+                if sound_state[0]:
+                    beep_start(beep_vol)
+            else:
+                if sound_state[0]:
+                    beep_error(beep_vol)
+
+    def stop_recording():
+        if audio.recording:
+            task_queue.put(_process_audio)
+
+    hotkey_mgr = HotkeyManager(hotkey_set, start_recording, stop_recording, logger)
+
+    # Обертки для слушателя (чтобы обновлять last_press_time для watchdog)
+    def on_any_press(key):
+        last_press_time[0] = time.time()
+        hotkey_mgr.on_press(key)
+
+    def on_any_release(key):
+        hotkey_mgr.on_release(key)
+    # ---------------------------------------
 
     def _worker():
         while True:
             task = task_queue.get()
-            if task is None:  # сигнал к завершению
+            if task is None:
                 break
             try:
                 task()
@@ -119,8 +134,6 @@ def main():
     def toggle_sound():
         sound_state[0] = not sound_state[0]
         cfg["sound_enabled"] = sound_state[0]
-        from core.config import CONFIG_PATH
-        import json
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
 
@@ -130,62 +143,15 @@ def main():
         position=cfg["overlay_position"],
     )
 
-    # --- Колбэки для pynput ---
-    def on_press(key):
-        try:
-            last_press_time[0] = time.time()
-            nk = normalize_key(key)
-            
-            # Игнорируем всё, что не является частью нашего хоткея!
-            if nk not in hotkey_set:
-                return
-                
-            pressed_keys.add(nk)
-            
-            if audio.recording or processing_lock.locked():
-                return
-                
-            if pressed_keys == hotkey_set:
-                # ЗАЩИТА ОТ ДРЕБЕЗГА (0.15 сек)
-                if time.time() - last_stop_time[0] < 0.15:
-                    return
-                    
-                if audio.start():
-                    if sound_state[0]:
-                        beep_start(beep_vol)
-                else:
-                    if sound_state[0]:
-                        beep_error(beep_vol)
-        except Exception as e:
-            logger.error(f"[Main] on_press: {e}")
-
-    def on_release(key):
-        try:
-            nk = normalize_key(key)
-            
-            # Работаем только с клавишами из хоткея
-            if nk in hotkey_set:
-                pressed_keys.discard(nk)
-                
-                if audio.recording:
-                    last_stop_time[0] = time.time()
-                    task_queue.put(_process_audio)
-        except Exception as e:
-            logger.error(f"[Main] on_release: {e}")
-
-    platform.start_key_listener(on_press, on_release)
+    platform.start_key_listener(on_any_press, on_any_release)
 
     def _process_audio():
         try:
-            logger.info(f"[AudioDebug] _process_audio стартовал. Время: {time.time():.3f}")
             if not audio.stop():
-                logger.info("[AudioDebug] audio.stop() вернул False, выхожу.")
                 return
                 
             audio_data = audio.get_audio()
-            
             if audio_data is None or len(audio_data) < 16000 * 0.3:
-                logger.info("[AudioDebug] Запись слишком короткая, выхожу без звука.")
                 return
                 
             if sound_state[0]:
@@ -196,12 +162,12 @@ def main():
         except Exception as e:
             logger.error(f"[Main] _process_audio: {e}")
         finally:
-            pressed_keys.clear()
+            hotkey_mgr.clear()
 
     def _watchdog():
         import psutil
         proc = psutil.Process()
-        proc.cpu_percent(interval=None)  # baseline
+        proc.cpu_percent(interval=None)
 
         while True:
             time.sleep(30)
@@ -212,7 +178,7 @@ def main():
                 alive = bool(listener and listener.is_alive())
 
                 sec_since_press = int(time.time() - last_press_time[0])
-                hook_stale = alive and sec_since_press > 600  # 10 минут
+                hook_stale = alive and sec_since_press > 600
 
                 logger.info(
                     f"[Watchdog] listener={alive} rec={audio.recording} "
@@ -223,20 +189,17 @@ def main():
                 if not alive:
                     logger.warning("[Watchdog] listener мёртв — перезапуск")
                     try:
-                        platform.stop_key_listener()      # ← на всякий случай
-                        platform.start_key_listener(on_press, on_release)
+                        platform.stop_key_listener()
+                        platform.start_key_listener(on_any_press, on_any_release)
                         last_press_time[0] = time.time()
                     except Exception as e:
                         logger.error(f"[Watchdog] не удалось перезапустить: {e}")
 
                 elif hook_stale:
-                    logger.warning(
-                        f"[Watchdog] нет нажатий {sec_since_press}s — "
-                        f"похоже, хук снят, перезапускаю listener"
-                    )
+                    logger.warning(f"[Watchdog] нет нажатий {sec_since_press}s — перезапуск listener")
                     try:
                         platform.stop_key_listener()
-                        platform.start_key_listener(on_press, on_release)
+                        platform.start_key_listener(on_any_press, on_any_release)
                         last_press_time[0] = time.time()
                     except Exception as e:
                         logger.error(f"[Watchdog] перезапуск хука упал: {e}")
@@ -259,18 +222,16 @@ def main():
         try: overlay.root.after(0, overlay.quit)
         except Exception as e: logger.error(f"[Shutdown] overlay: {e}")
 
-    # --- Окно настроек ---
     def open_settings():
         def on_save(new_cfg):
             nonlocal copy_method
             cfg.update(new_cfg)
             overlay.update_position(cfg["overlay_position"])
             audio.set_device(cfg.get("input_device", ""))
-            copy_method = cfg.get("copy_method", "insert")      # ← из P1
-            smart_insertion[0] = bool(cfg.get("smart_insertion", True))  # ← новое
+            copy_method = cfg.get("copy_method", "insert")
+            smart_insertion[0] = bool(cfg.get("smart_insertion", True))
         overlay.root.after(0, lambda: open_settings_window(overlay.root, cfg, on_save))
 
-    # Запуск трея (передаем функцию открытия настроек)
     start_tray(
         on_quit=_shutdown,
         on_settings=open_settings,
