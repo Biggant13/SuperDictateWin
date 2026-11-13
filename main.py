@@ -97,6 +97,7 @@ def main():
 
     last_press_time = [time.time()]
     pressed_keys = set()
+    last_stop_time = [0] 
     processing_lock = threading.Lock()
     smart_insertion = [bool(cfg.get("smart_insertion", True))]
     beep_vol = float(cfg.get("beep_volume", 0.05))
@@ -140,14 +141,15 @@ def main():
                 return
                 
             pressed_keys.add(nk)
-
-        #    logger.info(f"[DEBUG KEY] Нажато: {nk}, В памяти: {pressed_keys}") # <-- ДОБАВИТЬ
-
             
             if audio.recording or processing_lock.locked():
                 return
                 
             if pressed_keys == hotkey_set:
+                # ЗАЩИТА ОТ ДРЕБЕЗГА (0.15 сек)
+                if time.time() - last_stop_time[0] < 0.15:
+                    return
+                    
                 if audio.start():
                     if sound_state[0]:
                         beep_start(beep_vol)
@@ -161,12 +163,13 @@ def main():
         try:
             nk = normalize_key(key)
             
-            # Если отпускают клавишу из хоткея — убираем из памяти
+            # Работаем только с клавишами из хоткея
             if nk in hotkey_set:
                 pressed_keys.discard(nk)
                 
-            if audio.recording and nk in hotkey_set:
-                task_queue.put(_process_audio)
+                if audio.recording:
+                    last_stop_time[0] = time.time()
+                    task_queue.put(_process_audio)
         except Exception as e:
             logger.error(f"[Main] on_release: {e}")
 
@@ -174,16 +177,25 @@ def main():
 
     def _process_audio():
         try:
-            audio.stop()
+            logger.info(f"[AudioDebug] _process_audio стартовал. Время: {time.time():.3f}")
+            if not audio.stop():
+                logger.info("[AudioDebug] audio.stop() вернул False, выхожу.")
+                return
+                
+            audio_data = audio.get_audio()
+            
+            if audio_data is None or len(audio_data) < 16000 * 0.3:
+                logger.info("[AudioDebug] Запись слишком короткая, выхожу без звука.")
+                return
+                
             if sound_state[0]:
                 beep_stop(beep_vol)
-            audio_data = audio.get_audio()
+                
             ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
             transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
         except Exception as e:
             logger.error(f"[Main] _process_audio: {e}")
         finally:
-            # ЯДЕРНЫЙ УДАР: очищаем память от любых залипших клавиш (включая Ctrl+V)
             pressed_keys.clear()
 
     def _watchdog():
