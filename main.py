@@ -94,10 +94,25 @@ def main():
     processing_lock = threading.Lock()
     last_press_time = [time.time()]
 
+    # --- Таймер записи для оверлея ---
+    # recording_start_time[0] = None, когда запись не идёт (или уже зафиксирована)
+    # recording_elapsed[0]     = финальная длительность, показывается во время Transcribing
+    recording_start_time = [None]
+    recording_elapsed = [0.0]
+
+    def _get_elapsed():
+        """Возвращает текущую длительность записи в секундах (для оверлея)."""
+        if recording_start_time[0] is None:
+            return recording_elapsed[0]
+        return time.time() - recording_start_time[0]
+    # ---------------------------------
+
     # --- Инициализация менеджера хоткеев ---
     def start_recording():
         if not audio.recording and not processing_lock.locked():
             if audio.start():
+                recording_start_time[0] = time.time()
+                recording_elapsed[0] = 0.0
                 if sound_state[0]:
                     beep_start(beep_vol)
             else:
@@ -106,6 +121,11 @@ def main():
 
     def stop_recording():
         if audio.recording:
+            # Фиксируем длительность в момент отпускания хоткея.
+            # audio.stop() вызывается уже в воркере (_process_audio).
+            if recording_start_time[0] is not None:
+                recording_elapsed[0] = time.time() - recording_start_time[0]
+                recording_start_time[0] = None
             task_queue.put(_process_audio)
 
     hotkey_mgr = HotkeyManager(hotkey_set, start_recording, stop_recording, logger)
@@ -141,6 +161,8 @@ def main():
         is_recording_cb=lambda: audio.recording,
         is_processing_cb=lambda: processing_lock.locked(),
         position=cfg["overlay_position"],
+        level_cb=lambda: getattr(audio, "current_level", 0.0),
+        elapsed_cb=_get_elapsed,
     )
 
     platform.start_key_listener(on_any_press, on_any_release)
@@ -226,7 +248,7 @@ def main():
         def on_save(new_cfg):
             nonlocal copy_method
             cfg.update(new_cfg)
-            overlay.update_position(cfg["overlay_position"])
+            overlay.update_position()
             audio.set_device(cfg.get("input_device", ""))
             copy_method = cfg.get("copy_method", "insert")
             smart_insertion[0] = bool(cfg.get("smart_insertion", True))
