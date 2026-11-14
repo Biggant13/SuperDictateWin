@@ -18,7 +18,7 @@ def _make_icon_image():
     return img
 
 
-def start_tray(on_quit, on_settings, sound_state, toggle_sound, tk_root_ref):
+def start_tray(on_quit, on_settings, sound_state, toggle_sound, tk_root_ref, on_history=None):
     def _run():
         def quit_action(icon, item):
             icon.stop()
@@ -45,6 +45,7 @@ def start_tray(on_quit, on_settings, sound_state, toggle_sound, tk_root_ref):
             pystray.MenuItem(lambda item: get_stats_text()[1], None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Звуковые сигналы", toggle_sound_action, checked=lambda item: sound_state[0]),
+            pystray.MenuItem("Распознавания", lambda: on_history() if on_history else None, default=True),
             pystray.MenuItem("Настройки...", settings_action),
             pystray.MenuItem("Просмотр логов", view_log_action),
             pystray.MenuItem("Открыть лог в блокноте", open_log_action),

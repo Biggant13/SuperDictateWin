@@ -10,3 +10,4 @@ numpy==2.5.4
 hf_xet==1.7.0
 evdev>=1.6.0; sys_platform == "linux"
 psutil>=5.9
+soundcard>=0.4.2

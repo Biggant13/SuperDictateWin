@@ -1,3 +1,4 @@
+from core.history import add_record
 import os
 import time
 import numpy as np
@@ -106,6 +107,7 @@ class Transcriber:
                 return
 
             text = format_text(raw_text, has_selection=has_selection, context_data=prev_char)
+            add_record(text)
             print(f"[Transcriber] 📝 {text}")
 
             word_count = len(text.split())

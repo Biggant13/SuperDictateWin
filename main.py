@@ -1,3 +1,4 @@
+from core.system_audio import SystemAudioRecorder
 import faulthandler
 import os
 import time
@@ -57,13 +58,15 @@ def main():
                 
             splash.root.after(0, lambda: splash.set_status(status_text))
             
-            audio = AudioRecorder(device=cfg.get("input_device", ""))
+            audio_mic = AudioRecorder(device=cfg.get("input_device", ""))
+            audio_sys = SystemAudioRecorder()
             transcriber = Transcriber(cfg)
             transcriber.load_model()
             
             state['cfg'] = cfg
             state['platform'] = platform
-            state['audio'] = audio
+            state['audio_mic'] = audio_mic
+            state['audio_sys'] = audio_sys
             state['transcriber'] = transcriber
 
         except Exception as e:
@@ -82,10 +85,12 @@ def main():
 
     cfg = state['cfg']
     platform = state['platform']
-    audio = state['audio']
+    audio_mic = state['audio_mic']
+    audio_sys = state['audio_sys']
     transcriber = state['transcriber']
     
-    hotkey_set = parse_hotkey(cfg["hotkey"])
+    hotkey_mic_set = parse_hotkey(cfg.get("hotkey", "f9"))
+    hotkey_sys_set = parse_hotkey(cfg.get("hotkey_system", "f8"))
     copy_method = cfg.get("copy_method", "insert")
     smart_insertion = [bool(cfg.get("smart_insertion", True))]
     beep_vol = float(cfg.get("beep_volume", 0.05))
@@ -108,35 +113,34 @@ def main():
     # ---------------------------------
 
     # --- Инициализация менеджера хоткеев ---
-    def start_recording():
-        if not audio.recording and not processing_lock.locked():
-            if audio.start():
+    def start_recording(audio_obj):
+        if not audio_mic.recording and not audio_sys.recording and not processing_lock.locked():
+            if audio_obj.start():
                 recording_start_time[0] = time.time()
                 recording_elapsed[0] = 0.0
-                if sound_state[0]:
-                    beep_start(beep_vol)
+                if sound_state[0]: beep_start(beep_vol)
             else:
-                if sound_state[0]:
-                    beep_error(beep_vol)
+                if sound_state[0]: beep_error(beep_vol)
 
-    def stop_recording():
-        if audio.recording:
-            # Фиксируем длительность в момент отпускания хоткея.
-            # audio.stop() вызывается уже в воркере (_process_audio).
+    def stop_recording(audio_obj):
+        if audio_obj.recording:
             if recording_start_time[0] is not None:
                 recording_elapsed[0] = time.time() - recording_start_time[0]
                 recording_start_time[0] = None
-            task_queue.put(_process_audio)
+            task_queue.put(lambda: _process_audio(audio_obj))
 
-    hotkey_mgr = HotkeyManager(hotkey_set, start_recording, stop_recording, logger)
+    hotkey_mgr_mic = HotkeyManager(hotkey_mic_set, lambda: start_recording(audio_mic), lambda: stop_recording(audio_mic), logger)
+    hotkey_mgr_sys = HotkeyManager(hotkey_sys_set, lambda: start_recording(audio_sys), lambda: stop_recording(audio_sys), logger)
 
     # Обертки для слушателя (чтобы обновлять last_press_time для watchdog)
     def on_any_press(key):
         last_press_time[0] = time.time()
-        hotkey_mgr.on_press(key)
+        hotkey_mgr_mic.on_press(key)
+        hotkey_mgr_sys.on_press(key)
 
     def on_any_release(key):
-        hotkey_mgr.on_release(key)
+        hotkey_mgr_mic.on_release(key)
+        hotkey_mgr_sys.on_release(key)
     # ---------------------------------------
 
     def _worker():
@@ -157,34 +161,37 @@ def main():
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(cfg, f, indent=2, ensure_ascii=False)
 
+    def get_record_source():
+        if audio_mic.recording:
+            return "micro"
+        if audio_sys.recording:
+            return "system"
+        return "none"
+
     overlay = RecordingOverlay(
-        is_recording_cb=lambda: audio.recording,
+        is_recording_cb=lambda: audio_mic.recording or audio_sys.recording,
         is_processing_cb=lambda: processing_lock.locked(),
         position=cfg["overlay_position"],
-        level_cb=lambda: getattr(audio, "current_level", 0.0),
+        level_cb=lambda: audio_mic.current_level if audio_mic.recording else (audio_sys.current_level if audio_sys.recording else 0.0),
         elapsed_cb=_get_elapsed,
+        source_cb=get_record_source,  # <--- НОВАЯ СТРОКА
     )
 
     platform.start_key_listener(on_any_press, on_any_release)
 
-    def _process_audio():
+    def _process_audio(audio_obj):
         try:
-            if not audio.stop():
-                return
-                
-            audio_data = audio.get_audio()
-            if audio_data is None or len(audio_data) < 16000 * 0.3:
-                return
-                
-            if sound_state[0]:
-                beep_stop(beep_vol)
-                
+            if not audio_obj.stop(): return
+            audio_data = audio_obj.get_audio()
+            if audio_data is None or len(audio_data) < 16000 * 0.3: return
+            if sound_state[0]: beep_stop(beep_vol)
             ctx_fn = (lambda: get_context(copy_method)) if smart_insertion[0] else (lambda: (False, ""))
             transcriber.transcribe_and_paste(audio_data, ctx_fn, processing_lock)
         except Exception as e:
             logger.error(f"[Main] _process_audio: {e}")
         finally:
-            hotkey_mgr.clear()
+            hotkey_mgr_mic.clear()
+            hotkey_mgr_sys.clear()
 
     def _watchdog():
         import psutil
@@ -203,7 +210,7 @@ def main():
                 hook_stale = alive and sec_since_press > 600
 
                 logger.info(
-                    f"[Watchdog] listener={alive} rec={audio.recording} "
+                    f"[Watchdog] listener={alive} rec_mic={audio_mic.recording} rec_sys={audio_sys.recording} "
                     f"lock={processing_lock.locked()} rss={mem}MB cpu={cpu:.1f}% "
                     f"no_press={sec_since_press}s"
                 )
@@ -249,14 +256,20 @@ def main():
             nonlocal copy_method
             cfg.update(new_cfg)
             overlay.update_position()
-            audio.set_device(cfg.get("input_device", ""))
+            audio_mic.set_device(cfg.get("input_device", ""))
             copy_method = cfg.get("copy_method", "insert")
             smart_insertion[0] = bool(cfg.get("smart_insertion", True))
         overlay.root.after(0, lambda: open_settings_window(overlay.root, cfg, on_save))
 
+    def open_history():
+        from core.history import open_history_window
+        # Вызываем в главном потоке Tkinter
+        overlay.root.after(0, lambda: open_history_window(overlay.root))
+
     start_tray(
         on_quit=_shutdown,
         on_settings=open_settings,
+        on_history=open_history, # <--- НОВАЯ СТРОКА
         sound_state=sound_state,
         toggle_sound=toggle_sound,
         tk_root_ref=[overlay.root],

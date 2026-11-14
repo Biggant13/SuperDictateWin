@@ -32,6 +32,9 @@ if os.path.exists('config.json'):
 
 # Скрытые импорты
 hiddenimports += [
+    # --- ВСТАВИТЬ ПОСЛЕ ЭТОЙ СТРОКИ ---
+    'soundcard',               # Добавлено для захвата системного звука (F8)
+    # --- КОНЕЦ ВСТАВКИ ---
     'sounddevice',
     'pyperclip',
     'PIL._tkinter_finder',

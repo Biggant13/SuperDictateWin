@@ -22,11 +22,12 @@ class RecordingOverlay:
     COLOR_SEG_HIGH  = "#f44336"
 
     def __init__(self, is_recording_cb, is_processing_cb, position,
-                 level_cb=None, elapsed_cb=None):
+                 level_cb=None, elapsed_cb=None, source_cb=None):
         self.is_recording_cb = is_recording_cb
         self.is_processing_cb = is_processing_cb
         self.level_cb = level_cb
         self.elapsed_cb = elapsed_cb
+        self.source_cb = source_cb
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -117,6 +118,7 @@ class RecordingOverlay:
             self.canvas.itemconfig(self.timer_text, text=text)
             self._last_timer_str = text
 
+    # --- ВСТАВИТЬ ВМЕСТО СТАРОГО МЕТОДА _poll ---
     def _poll(self):
         try:
             processing = self.is_processing_cb()
@@ -137,7 +139,6 @@ class RecordingOverlay:
             if self._visible:
                 if processing:
                     self.canvas.itemconfig(self.dot, fill=self.COLOR_DOT_PROC)
-                    # Изменили текст на русский
                     self.canvas.itemconfig(self.status_text, text="Перевожу в текст")
                     self._set_active_segments(0)
                     if self.elapsed_cb:
@@ -148,7 +149,20 @@ class RecordingOverlay:
 
                 elif recording:
                     self.canvas.itemconfig(self.dot, fill=self.COLOR_DOT_REC)
-                    self.canvas.itemconfig(self.status_text, text="REC")
+                    
+                    # Определяем текст в зависимости от источника
+                    text = "REC"
+                    if self.source_cb:
+                        try:
+                            src = self.source_cb()
+                            if src == "micro":
+                                text = "REC Micro"
+                            elif src == "system":
+                                text = "REC System"
+                        except Exception:
+                            pass
+                    
+                    self.canvas.itemconfig(self.status_text, text=text)
                     
                     if self.level_cb:
                         try:
@@ -167,6 +181,7 @@ class RecordingOverlay:
             pass
 
         self.root.after(50, self._poll)
+    # --- КОНЕЦ ВСТАВКИ ---
 
     def run(self):
         self.root.mainloop()
