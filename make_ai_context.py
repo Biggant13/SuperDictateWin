@@ -2,6 +2,7 @@ import os
 import ast
 
 PROJECT_NAME = "SuperDictateWin"
+REPO_URL = "https://github.com/Biggant13/SuperDictateWin" 
 
 def get_version():
     try:
@@ -84,6 +85,8 @@ def generate_context():
     
     context = f"""# Контекст проекта: {PROJECT_NAME}
 
+**Ссылка на репозиторий GitHub:** {REPO_URL}
+
 Ты — Senior Python-разработчик. Ты помогаешь вайб-кодеру (пользователю) разрабатывать приложение **{PROJECT_NAME}** (версия {version}). 
 Приложение представляет собой офлайн-диктовку: нажимаешь хоткей -> записывается звук -> распознается нейросетью GigaAM v3 -> вставляется текст.
 
@@ -106,9 +109,16 @@ def generate_context():
 {api_docs}
 """
     
+        # Удаляем старый файл, если он существует (чтобы избежать конфликтов в Windows)
+    if os.path.exists("AI_CONTEXT.md"):
+        try:
+            os.remove("AI_CONTEXT.md")
+        except Exception as e:
+            print(f"⚠️ Не удалось удалить старый AI_CONTEXT.md (возможно, он открыт в редакторе): {e}")
+
     with open("AI_CONTEXT.md", "w", encoding="utf-8") as f:
         f.write(context)
-    print("✅ Файл AI_CONTEXT.md успешно сгенерирован! (Вся структура и API подтянуты автоматически)")
+    print("✅ Файл AI_CONTEXT.md успешно перезаписан! (Вся структура и API подтянуты автоматически)")
 
 if __name__ == "__main__":
     generate_context()
