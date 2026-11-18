@@ -90,6 +90,31 @@ class Transcriber:
 
         print("[Transcriber] Модель готова.")
 
+    def transcribe_only(self, audio, processing_lock):
+        """Распознает аудио и возвращает текст (без вставки и истории)."""
+        if not processing_lock.acquire(blocking=True):
+            return ""
+        try:
+            if audio is None or len(audio) < 16000 * 0.3:
+                return ""
+            if float(np.sqrt(np.mean(audio ** 2))) < 0.003:
+                return ""
+
+            raw_text = self.model.recognize(audio).strip()
+            if not raw_text or is_hallucination(raw_text):
+                return ""
+
+            text = format_text(raw_text, has_selection=False, context_data="")
+            word_count = len(text.split())
+            if word_count > 0:
+                add_words(word_count)
+            return text
+        except Exception as e:
+            print(f"[Transcriber] Ошибка распознавания (встреча): {e}")
+            return "[Ошибка распознавания]"
+        finally:
+            processing_lock.release()
+
     def transcribe_and_paste(self, audio, get_context_fn, processing_lock):
         if not processing_lock.acquire(blocking=False):
             return

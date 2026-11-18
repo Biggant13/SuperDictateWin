@@ -18,7 +18,7 @@ def _make_icon_image():
     return img
 
 
-def start_tray(on_quit, on_settings, sound_state, toggle_sound, tk_root_ref, on_history=None):
+def start_tray(on_quit, on_settings, on_history, on_meetings, sound_state, toggle_sound, tk_root_ref):
     def _run():
         def quit_action(icon, item):
             icon.stop()
@@ -44,13 +44,13 @@ def start_tray(on_quit, on_settings, sound_state, toggle_sound, tk_root_ref, on_
             pystray.MenuItem(lambda item: get_stats_text()[0], None, enabled=False),
             pystray.MenuItem(lambda item: get_stats_text()[1], None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Звуковые сигналы", toggle_sound_action, checked=lambda item: sound_state[0]),
-            pystray.MenuItem("Распознавания", lambda: on_history() if on_history else None, default=True),
-            pystray.MenuItem("Настройки...", settings_action),
-            pystray.MenuItem("Просмотр логов", view_log_action),
-            pystray.MenuItem("Открыть лог в блокноте", open_log_action),
+            pystray.MenuItem("📝 История распознаваний", lambda: on_history() if on_history else None, default=True),
+            pystray.MenuItem("⚙️ Настройки...", settings_action),
+            pystray.MenuItem("👁️ Просмотр логов", view_log_action),
+            pystray.MenuItem("📄 Открыть лог в блокноте", open_log_action),
+            pystray.MenuItem("📁 Папка встреч", lambda: tk_root_ref[0].after(0, on_meetings)),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Выход", quit_action),
+            pystray.MenuItem("❌ Выход", quit_action),
         )
 
         icon = pystray.Icon("superdictate", _make_icon_image(), "SuperDictate", menu)

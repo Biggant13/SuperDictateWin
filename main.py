@@ -31,6 +31,7 @@ from core.tray import start_tray
 from core.sounds import beep_error, beep_start, beep_stop, shutdown as shutdown_sounds
 from core.settings import open_settings_window
 from core.utils import parse_hotkey, get_context
+from core.meeting import MeetingRecorder
 from core.hotkey import HotkeyManager
 
 task_queue = queue.Queue()
@@ -145,6 +146,8 @@ def main():
         return time.time() - recording_start_time[0]
 
     def start_recording(audio_obj):
+        if meeting_recorder.recording:
+            return
         if not audio_mic.recording and not audio_sys.recording and not processing_lock.locked():
             if audio_obj.start():
                 recording_start_time[0] = time.time()
@@ -162,15 +165,44 @@ def main():
 
     hotkey_mgr_mic = HotkeyManager(hotkey_mic_set, lambda: start_recording(audio_mic), lambda: stop_recording(audio_mic), logger)
     hotkey_mgr_sys = HotkeyManager(hotkey_sys_set, lambda: start_recording(audio_sys), lambda: stop_recording(audio_sys), logger)
+    meeting_recorder = MeetingRecorder(audio_mic, audio_sys, transcriber, processing_lock)
+    hotkey_meeting_set = parse_hotkey(cfg.get("hotkey_meeting", "f7"))
 
+    def toggle_meeting():
+        if meeting_recorder.is_processing:
+            if sound_state[0]: beep_error(beep_vol) # Нельзя начать новую, пока идет обработка
+            return
+            
+        if not meeting_recorder.recording:
+            if not audio_mic.recording and not audio_sys.recording and not processing_lock.locked():
+                if meeting_recorder.start():
+                    recording_start_time[0] = time.time()
+                    recording_elapsed[0] = 0.0
+                    if sound_state[0]: beep_start(beep_vol)
+                else:
+                    if sound_state[0]: beep_error(beep_vol)
+        else:
+            meeting_recorder.stop()
+            if recording_start_time[0] is not None:
+                recording_elapsed[0] = time.time() - recording_start_time[0]
+                recording_start_time[0] = None
+            if sound_state[0]: beep_stop(beep_vol)
+
+    def dummy_stop_meeting():
+        pass
+
+    hotkey_mgr_meeting = HotkeyManager(hotkey_meeting_set, toggle_meeting, dummy_stop_meeting, logger)
+    
     def on_any_press(key):
         last_press_time[0] = time.time()
         hotkey_mgr_mic.on_press(key)
         hotkey_mgr_sys.on_press(key)
+        hotkey_mgr_meeting.on_press(key)
 
     def on_any_release(key):
         hotkey_mgr_mic.on_release(key)
         hotkey_mgr_sys.on_release(key)
+        hotkey_mgr_meeting.on_release(key)
 
     def _worker():
         while True:
@@ -197,7 +229,7 @@ def main():
 
     overlay = RecordingOverlay(
         is_recording_cb=lambda: audio_mic.recording or audio_sys.recording,
-        is_processing_cb=lambda: processing_lock.locked(),
+        is_processing_cb=lambda: processing_lock.locked() or meeting_recorder.is_processing,
         position=cfg["overlay_position"],
         level_cb=lambda: audio_mic.current_level if audio_mic.recording else (audio_sys.current_level if audio_sys.recording else 0.0),
         elapsed_cb=_get_elapsed,
@@ -263,6 +295,11 @@ def main():
     def _shutdown():
         if _shutdown_done[0]: return
         _shutdown_done[0] = True
+        try:
+            if meeting_recorder.recording:
+                meeting_recorder.stop()
+        except Exception as e:
+            logger.error(f"[Shutdown] meeting: {e}")
         try: platform.stop_key_listener()
         except Exception as e: logger.error(f"[Shutdown] listener: {e}")
         try: shutdown_sounds()
@@ -284,10 +321,28 @@ def main():
         from core.history import open_history_window
         overlay.root.after(0, lambda: open_history_window(overlay.root))
 
+    def open_meetings_folder():
+        import subprocess
+        import sys
+        import os
+        
+        folder = os.path.abspath("meetings")
+        # Создаем папку, если ее еще нет, чтобы проводник не выдал ошибку
+        os.makedirs(folder, exist_ok=True)
+        
+        try:
+            if sys.platform == "win32":
+                os.startfile(folder)
+            else:
+                subprocess.Popen(["xdg-open", folder])
+        except Exception as e:
+            logger.error(f"[Main] Не удалось открыть папку встреч: {e}")
+
     start_tray(
         on_quit=_shutdown,
         on_settings=open_settings,
         on_history=open_history,
+        on_meetings=open_meetings_folder,
         sound_state=sound_state,
         toggle_sound=toggle_sound,
         tk_root_ref=[overlay.root],
