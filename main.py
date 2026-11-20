@@ -175,7 +175,9 @@ def main():
             
         if not meeting_recorder.recording:
             if not audio_mic.recording and not audio_sys.recording and not processing_lock.locked():
-                prompt_text = cfg.get("meeting_prompt", "")
+                prompts_dict = cfg.get("meeting_prompts", {})
+                active_name = cfg.get("active_meeting_prompt", "По умолчанию")
+                prompt_text = prompts_dict.get(active_name, "")
                 if meeting_recorder.start(prompt_text):
                     recording_start_time[0] = time.time()
                     recording_elapsed[0] = 0.0
@@ -341,13 +343,24 @@ def main():
 
     def open_prompt():
         from core.prompt_editor import open_prompt_window
-        def on_save(new_prompt):
-            cfg["meeting_prompt"] = new_prompt
+        
+        # Получаем словарь промтов и активный промт
+        prompts_dict = cfg.get("meeting_prompts", {
+            "По умолчанию": "Ты — ассистент, который делает краткое резюме встреч. Выделяй ключевые темы, принятые решения и задачи (action items)."
+        })
+        if not prompts_dict:
+            prompts_dict = {"По умолчанию": "Ты — ассистент, который делает краткое резюме встреч..."}
+        active_name = cfg.get("active_meeting_prompt", "По умолчанию")
+        active_text = prompts_dict.get(active_name, "")
+
+        def on_save(new_dict, new_active_name):
+            cfg["meeting_prompts"] = new_dict
+            cfg["active_meeting_prompt"] = new_active_name
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
-        current_prompt = cfg.get("meeting_prompt", "Ты — ассистент, который делает краткое резюме встреч. Выделяй ключевые темы, принятые решения и задачи (action items).")
-        overlay.root.after(0, lambda: open_prompt_window(overlay.root, current_prompt, on_save))
 
+        overlay.root.after(0, lambda: open_prompt_window(overlay.root, prompts_dict, active_text, on_save))
+    
     start_tray(
         on_quit=_shutdown,
         on_settings=open_settings,
