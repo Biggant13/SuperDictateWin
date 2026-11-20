@@ -18,7 +18,7 @@ class MeetingRecorder:
         self.is_processing = False
         self.file_path = ""
 
-    def start(self):
+    def start(self, prompt_text=""):
         if self.recording or self.is_processing:
             return False
             
@@ -35,6 +35,11 @@ class MeetingRecorder:
                 return False
                 
             self.recording = True
+            with open(self.file_path, "w", encoding="utf-8") as f:
+                if prompt_text and prompt_text.strip():
+                    f.write(prompt_text.strip() + "\n\n--- РАСШИФРОВКА ВСТРЕЧИ ---\n\n")
+                else:
+                    f.write("--- РАСШИФРОВКА ВСТРЕЧИ ---\n\n")
             logger.info(f"[Meeting] 🎤 Запись встречи начата: {self.file_path}")
             return True
         except Exception as e:
