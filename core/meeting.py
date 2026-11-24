@@ -24,8 +24,11 @@ class MeetingRecorder:
             
         try:
             os.makedirs("meetings", exist_ok=True)
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            self.file_path = os.path.join("meetings", f"{timestamp}.txt")
+            now = datetime.datetime.now()
+            days_ru = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+            day_name = days_ru[now.weekday()]
+            timestamp = now.strftime("%d.%m.%Y_%H-%M-%S")
+            self.file_path = os.path.join("meetings", f"{timestamp}_{day_name}.txt")
             
             # Запускаем оба рекордера
             if not self.audio_mic.start():
