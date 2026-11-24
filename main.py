@@ -356,6 +356,10 @@ def main():
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
 
         overlay.root.after(0, lambda: open_prompt_window(overlay.root, prompts_dict, active_text, on_save))
+
+    def open_help():
+        from core.help_window import open_help_window
+        overlay.root.after(0, lambda: open_help_window(overlay.root))
     
     start_tray(
         on_quit=_shutdown,
@@ -363,6 +367,7 @@ def main():
         on_history=open_history,
         on_meetings=open_meetings_folder,
         on_prompt=open_prompt,
+        on_help=open_help,
         sound_state=sound_state,
         toggle_sound=toggle_sound,
         tk_root_ref=[overlay.root],

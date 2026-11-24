@@ -18,7 +18,7 @@ def _make_icon_image():
     return img
 
 
-def start_tray(on_quit, on_settings, on_history, on_meetings, on_prompt, sound_state, toggle_sound, tk_root_ref):
+def start_tray(on_quit, on_settings, on_history, on_meetings, on_prompt, on_help, sound_state, toggle_sound, tk_root_ref):
     def _run():
         def quit_action(icon, item):
             icon.stop()
@@ -46,6 +46,7 @@ def start_tray(on_quit, on_settings, on_history, on_meetings, on_prompt, sound_s
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("📝 История распознаваний", lambda: on_history() if on_history else None, default=True),
             pystray.MenuItem("⚙️ Настройки...", settings_action),
+            pystray.MenuItem("❓ Как пользоваться", lambda: tk_root_ref[0].after(0, on_help)),
             pystray.MenuItem("✍️ Промт", lambda: tk_root_ref[0].after(0, on_prompt)),
             pystray.MenuItem("👁️ Просмотр логов", view_log_action),
             pystray.MenuItem("📄 Открыть лог в блокноте", open_log_action),
