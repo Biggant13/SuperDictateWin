@@ -1,3 +1,4 @@
+import json
 import os
 import ast
 
@@ -33,35 +34,84 @@ def get_tree(startpath):
         subindent = '    ' * (level + 1)
         for f in files:
             if f.endswith(('.py', '.txt', '.json', '.spec', '.iss', '.md', '.yml')):
-                tree_str += f'{subindent}{f}\n'
+                filepath = os.path.join(root, f)
+                loc = ""
+                if f.endswith(".py"):
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as py_f:
+                            loc = f" ({len(py_f.readlines())} loc)"
+                    except:
+                        pass
+                tree_str += f'{subindent}{f}{loc}\n'
     return tree_str
 
 def extract_api(filepath):
-    """Вытаскивает классы и функции из Python-файла, чтобы ИИ знал API."""
+    """Вытаскивает классы, функции, докстринги и глобальные константы."""
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             tree = ast.parse(f.read())
             
         api = []
         for node in tree.body:
-            if isinstance(node, ast.ClassDef):
-                api.append(f"class {node.name}:")
+            # Глобальные константы (например, MAX_RECORDS = 100)
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                if isinstance(node.value, (ast.Constant, ast.List, ast.Dict, ast.Set)):
+                    target_name = node.targets[0].id
+                    if target_name.isupper():  # Берем только КАПС
+                        api.append(f"{target_name} = ...")
+
+            # Классы
+            elif isinstance(node, ast.ClassDef):
+                doc = ast.get_docstring(node)
+                doc_str = f"  # {doc.splitlines()[0]}" if doc else ""
+                api.append(f"class {node.name}:{doc_str}")
+                
                 for child in node.body:
                     if isinstance(child, ast.FunctionDef):
                         args = [a.arg for a in child.args.args]
-                        api.append(f"    def {child.name}({', '.join(args)})")
+                        c_doc = ast.get_docstring(child)
+                        c_doc_str = f"  # {c_doc.splitlines()[0]}" if c_doc else ""
+                        api.append(f"    def {child.name}({', '.join(args)}){c_doc_str}")
+            
+            # Функции
             elif isinstance(node, ast.FunctionDef):
                 args = [a.arg for a in node.args.args]
-                api.append(f"def {node.name}({', '.join(args)})")
+                doc = ast.get_docstring(node)
+                doc_str = f"  # {doc.splitlines()[0]}" if doc else ""
+                api.append(f"def {node.name}({', '.join(args)}){doc_str}")
+                
         return "\n".join(api)
     except Exception as e:
         return f"[Ошибка парсинга: {e}]"
+
+def get_git_info():
+    """Вытаскивает текущую ветку и последний коммит."""
+    import subprocess
+    try:
+        branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], encoding="utf-8").strip()
+        last_commit = subprocess.check_output(["git", "log", "-1", "--pretty=%B"], encoding="utf-8").strip()
+        return f"Ветка: `{branch}` | Последний коммит: *{last_commit.splitlines()[0]}*"
+    except Exception:
+        return "Git информация недоступна."
+
+def get_config_json():
+    """Читает config.json, чтобы ИИ знал доступные настройки."""
+    try:
+        with open("config.json", "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+            # Скрываем потенциально длинные/секретные данные, оставляем только ключи и примитивы
+            safe_cfg = {k: v for k, v in cfg.items() if isinstance(v, (str, int, float, bool, list))}
+            return json.dumps(safe_cfg, indent=2, ensure_ascii=False)
+    except Exception:
+        return "{}"
 
 def generate_context():
     version = get_version()
     tree = get_tree(".")
     reqs = get_requirements()
-    
+    git_info = get_git_info() # <--- НОВОЕ
+    config_data = get_config_json() # <--- НОВОЕ
+
     # Читаем правила, если пользователь их создал
     rules = ""
     if os.path.exists("AI_RULES.md"):
@@ -82,13 +132,19 @@ def generate_context():
 
     tree_block = "```text\n" + tree + "```\n"
     reqs_block = "```text\n" + reqs + "\n```\n"
+
+    config_block = f"```json\n{config_data}\n```\n"
     
     context = f"""# Контекст проекта: {PROJECT_NAME}
 
 **Ссылка на репозиторий GitHub:** {REPO_URL}
+**Текущий статус:** {git_info}
 
 Ты — Senior Python-разработчик. Ты помогаешь вайб-кодеру (пользователю) разрабатывать приложение **{PROJECT_NAME}** (версия {version}). 
 Приложение представляет собой офлайн-диктовку: нажимаешь хоткей -> записывается звук -> распознается нейросетью GigaAM v3 -> вставляется текст.
+
+## ⚙️ Текущий config.json (Доступные настройки)
+{config_block}
 
 ## 📦 Зависимости (requirements.txt)
 {reqs_block}
@@ -96,21 +152,15 @@ def generate_context():
 ## 📂 Структура проекта
 {tree_block}
 
-## 🏗 Архитектура и правила (НЕ ЛОМАТЬ!)
-1. **Потоки (Threading):** Обработчики `pynput` (`on_press`, `on_release`) работают в системном потоке хука Windows. Они **обязаны** завершаться мгновенно (до 300 мс). Вся тяжелая работа вынесена в `task_queue`.
-2. **Хоткеи (HotkeyManager):** Логика нажатий изолирована в `core/hotkey.py`. **Никогда не переноси фильтрацию клавиш обратно в `main.py`**. Это защищает от залипания клавиш.
-3. **Аудио (AudioRecorder):** `audio.stop()` возвращает `True/False`. Остановка `InputStream` вынесена в отдельный поток (иначе PortAudio вешает приложение).
-4. **Пути (Paths):** В `config.py` используется `sys.executable` для собранных версий. Конфиги лежат рядом с `.exe`.
-5. **Формат выдачи кода (КРИТИЧЕСКИ ВАЖНО):** Никогда не выдавай весь файл целиком, если об этом не просят. Выдавай только измененный участок. Всегда четко указывай, куда именно его вставить, используя следующий шаблон:
-```python
-# --- СТРОКА СВЕРХУ (найди её в файле) ---
 # --- ВСТАВИТЬ ПОСЛЕ ЭТОЙ СТРОКИ ---
-[твой новый код]
-# --- КОНЕЦ ВСТАВКИ ---
-# --- СТРОКА СНИЗУ (убедись, что она осталась) ---
-6. **Релизы (CI/CD):** На GitHub уже настроен GitHub Actions. Сборка релизов (`.exe` и `.tar.gz`) происходит **автоматически** при пуше тега. **Никогда не объясняй пользователю, как создавать релиз на GitHub вручную** (никаких "Draft a new release", "Choose a tag" и т.д.). Просто скажи выполнить `git tag` и `git push origin <tag>`.
-7. **Дополнительные правила от пользователя:**
-{rules}
+## 🎮 Управление и ключевые фичи
+1. **F9 (Диктовка с микрофона):** Нажатие и удержание. Записывает голос с микрофона, распознает через GigaAM и вставляет текст в активное окно. Добавляет слова в статистику.
+2. **F8 (Диктовка с системы):** Нажатие и удержание. Записывает системный звук (loopback), распознает и вставляет текст. Добавляет слова в статистику.
+3. **F7 (Режим встреч):** Переключатель (нажал — старт, нажал — стоп). Пишет одновременно микрофон и систему. Сохраняет результат в папку `meetings/` (файлы `.txt`), **не вставляет текст в окно и не добавляет в статистику**. Перед началом записи в файл вписывается активный «Промт» (из `config.json` -> `meeting_prompts`).
+4. **История (Трей -> Распознавания):** Окно с историей. Поддерживает «Избранное» (желтый фон, не удаляется при очистке), удаление по одной записи и фильтр «Только избранные».
+5. **Менеджер промтов (Трей -> Промт):** Окно для создания/редактирования/удаления промтов. Выбранный промт (галочка ✅) используется для F7.
+6. **Сплэш-скрин:** Работает в отдельном `multiprocessing.Process` (чтобы анимация пульсации не зависала из-за GIL при загрузке ONNX-модели).
+7. **Статистика:** Считает только слова, надиктованные через F8 и F9. Встречи (F7) не учитываются.
 
 ## 🧩 Карта API (Что уже реализовано в коде)
 Ниже приведены реальные классы и методы. Используй только их, не выдумывай новые функции, если они уже есть.
