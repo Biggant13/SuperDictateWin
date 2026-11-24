@@ -105,10 +105,8 @@ class Transcriber:
                 return ""
 
             text = format_text(raw_text, has_selection=False, context_data="")
-            word_count = len(text.split())
-            if word_count > 0:
-                add_words(word_count)
             return text
+        
         except Exception as e:
             print(f"[Transcriber] Ошибка распознавания (встреча): {e}")
             return "[Ошибка распознавания]"
