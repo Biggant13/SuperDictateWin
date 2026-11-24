@@ -9,9 +9,6 @@ _crash_log.write(f"\n--- start ---\n")
 _crash_log.flush()
 faulthandler.enable(file=_crash_log, all_threads=True)
 
-import sys
-sys.setswitchinterval(0.001)
-
 import signal
 import threading
 import queue
@@ -38,7 +35,6 @@ task_queue = queue.Queue()
 
 def _run_splash_process(q):
     """Запускает сплэш в отдельном процессе, чтобы GIL не блокировал анимацию."""
-    import queue as _queue
     from core.splash import SplashScreen
     
     splash = SplashScreen()
@@ -48,11 +44,11 @@ def _run_splash_process(q):
             while True:
                 msg = q.get_nowait()
                 if msg == "CLOSE":
-                    splash._close_immediately() # Мгновенное закрытие
+                    splash._close_immediately()
                     return
                 else:
                     splash.set_status(msg)
-        except _queue.Empty:
+        except queue.Empty:  # <--- ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЙ QUEUE
             pass
         if splash.root.winfo_exists():
             splash.root.after(100, check_queue)
