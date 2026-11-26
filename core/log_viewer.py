@@ -1,178 +1,140 @@
 import os
-import tkinter as tk
-from tkinter import ttk
-from core.logger import LOG_FILE
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QPlainTextEdit, QPushButton, QHBoxLayout
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QTextCursor, QTextCharFormat, QColor, QFont, QCursor
 
-MAX_LINES = 200
-POLL_MS = 500
+from core.config import BASE_DIR
+from core.qt_utils import get_qapp
+
+# Имя файла лога (если у тебя в logger.py другое имя, поменяй здесь)
+LOG_FILE = os.path.join(BASE_DIR, "superdictate.log")
 
 _instance = None
 
+class LogViewerDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Просмотр логов")
+        self.resize(700, 500)
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; }
+            QPushButton { 
+                background-color: #333333; color: white; border: 1px solid #555; 
+                border-radius: 4px; padding: 6px 12px; font-family: 'Segoe UI';
+            }
+            QPushButton:hover { background-color: #444444; }
+        """)
 
-def open_log_viewer(root):
-    """Открывает окно логов (синглтон — повторный вызов поднимает существующее)."""
-    global _instance
-    if _instance is not None and _instance.alive():
-        _instance.focus()
-        return
-    _instance = LogViewerWindow(root)
+        self._file_pos = 0
 
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
 
-class LogViewerWindow:
-    def __init__(self, root):
-        self.win = tk.Toplevel(root)
-        self.win.title("SuperDictate — Логи (live)")
-        self.win.geometry("900x520")
+        # Текстовое поле для логов
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setFont(QFont("Consolas", 10))
+        self.text_edit.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #111111;
+                color: #f8f8f2;
+                border: 1px solid #333;
+                border-radius: 4px;
+                padding: 5px;
+            }
+        """)
+        layout.addWidget(self.text_edit)
 
-        toolbar = tk.Frame(self.win)
-        toolbar.pack(fill="x", padx=6, pady=6)
+        # Кнопки внизу
+        btn_layout = QHBoxLayout()
+        
+        self.btn_clear = QPushButton("🗑 Очистить вид")
+        self.btn_clear.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_clear.clicked.connect(self.text_edit.clear)
+        btn_layout.addWidget(self.btn_clear)
+        
+        btn_layout.addStretch()
+        
+        self.btn_close = QPushButton("Закрыть")
+        self.btn_close.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_close.clicked.connect(self.close)
+        btn_layout.addWidget(self.btn_close)
+        
+        layout.addLayout(btn_layout)
 
-        self.auto_scroll = tk.BooleanVar(value=True)
-        tk.Checkbutton(toolbar, text="Авто-прокрутка", variable=self.auto_scroll).pack(side="left")
+        # Таймер для чтения новых строк
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._poll)
+        self.timer.start(1000) # Раз в секунду
 
-        self.autopoll = tk.BooleanVar(value=True)
-        tk.Checkbutton(toolbar, text="Live", variable=self.autopoll).pack(side="left", padx=(10, 0))
+        # Первичная загрузка
+        self._load_initial()
 
-        tk.Button(toolbar, text="Обновить", command=self._reload).pack(side="right")
-        tk.Button(toolbar, text="Очистить", command=self._clear).pack(side="right", padx=(0, 5))
-
-        frame = tk.Frame(self.win)
-        frame.pack(fill="both", expand=True, padx=6, pady=(0, 6))
-
-        self.text = tk.Text(
-            frame, wrap="none", font=("Consolas", 9), state="disabled",
-            bg="#1e1e1e", fg="#d4d4d4", insertbackground="#d4d4d4",
-        )
-        sb_y = ttk.Scrollbar(frame, command=self.text.yview)
-        sb_x = ttk.Scrollbar(frame, orient="horizontal", command=self.text.xview)
-        self.text.configure(yscrollcommand=sb_y.set, xscrollcommand=sb_x.set)
-
-        self.text.grid(row=0, column=0, sticky="nsew")
-        sb_y.grid(row=0, column=1, sticky="ns")
-        sb_x.grid(row=1, column=0, sticky="ew")
-        frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(0, weight=1)
-
-        self.text.tag_configure("ERROR", foreground="#f48771")
-        self.text.tag_configure("WARNING", foreground="#dcdcaa")
-        self.text.tag_configure("INFO", foreground="#d4d4d4")
-        self.text.tag_configure("DEBUG", foreground="#808080")
-
-        self._pos = 0
-        self._poll_id = None
-        self.win.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        self._reload()
-        self._schedule_poll()
-
-    def alive(self):
+    def _load_initial(self):
+        """Загружает последние 1000 строк при открытии."""
+        if not os.path.exists(LOG_FILE):
+            return
         try:
-            return self.win.winfo_exists()
-        except Exception:
-            return False
-
-    def focus(self):
-        try:
-            self.win.deiconify()
-            self.win.lift()
-            self.win.focus_force()
-        except Exception:
-            pass
-
-    def _tag_for(self, line):
-        if " - ERROR - " in line:
-            return "ERROR"
-        if " - WARNING - " in line:
-            return "WARNING"
-        if " - DEBUG - " in line:
-            return "DEBUG"
-        return "INFO"
-
-    def _append(self, line):
-        self.text.configure(state="normal")
-        self.text.insert("end", line, self._tag_for(line))
-
-        total = int(self.text.index("end-1c").split(".")[0])
-        if total > MAX_LINES:
-            self.text.delete("1.0", f"{total - MAX_LINES + 1}.0")
-
-        self.text.configure(state="disabled")
-
-    def _reload(self):
-        self.text.configure(state="normal")
-        self.text.delete("1.0", "end")
-        self.text.configure(state="disabled")
-
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()[-MAX_LINES:]
-        except FileNotFoundError:
-            lines = []
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                # Берем только последние 1000 строк, чтобы не вешать окно
+                for line in lines[-1000:]:
+                    self._append_line(line)
+                self._file_pos = f.tell()
         except Exception as e:
-            lines = [f"[LogViewer] Не удалось прочитать лог: {e}\n"]
+            self._append_line(f"[Ошибка чтения лога: {e}]\n")
 
-        for line in lines:
-            self._append(line)
+    def _append_line(self, line):
+        cursor = self.text_edit.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        
+        # Настройка цвета в зависимости от содержания
+        fmt = QTextCharFormat()
+        if "ERROR" in line or "CRITICAL" in line or "Exception" in line or "Ошибка" in line:
+            fmt.setForeground(QColor("#ff5555")) # Красный
+        elif "WARNING" in line or "WARN" in line:
+            fmt.setForeground(QColor("#f1fa8c")) # Желтый
+        elif "INFO" in line:
+            fmt.setForeground(QColor("#50fa7b")) # Зеленый
+        elif "DEBUG" in line:
+            fmt.setForeground(QColor("#6272a4")) # Серо-синий
+        else:
+            fmt.setForeground(QColor("#f8f8f2")) # Белый (по умолчанию)
 
-        try:
-            self._pos = os.path.getsize(LOG_FILE)
-        except FileNotFoundError:
-            self._pos = 0
-
-        if self.auto_scroll.get():
-            self.text.see("end")
+        cursor.insertText(line, fmt)
+        self.text_edit.setTextCursor(cursor)
+        
+        # Автоскролл вниз, только если пользователь не отлистал вверх
+        sb = self.text_edit.verticalScrollBar()
+        if sb.value() >= sb.maximum() - 50:
+            sb.setValue(sb.maximum())
 
     def _poll(self):
-        if not self.autopoll.get():
+        if not os.path.exists(LOG_FILE):
             return
+            
         try:
-            size = os.path.getsize(LOG_FILE)
-        except FileNotFoundError:
-            return
-        except Exception:
-            return
-
-        if size < self._pos:
-            self._reload()
-            return
-
-        if size == self._pos:
-            return
-
-        try:
-            with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
-                f.seek(self._pos)
-                chunk = f.read()
-                self._pos = f.tell()
-        except Exception:
-            return
-
-        for line in chunk.splitlines(keepends=True):
-            self._append(line)
-
-        if self.auto_scroll.get():
-            self.text.see("end")
-
-    def _schedule_poll(self):
-        self._poll()
-        try:
-            self._poll_id = self.win.after(POLL_MS, self._schedule_poll)
-        except Exception:
-            self._poll_id = None
-
-    def _clear(self):
-        self.text.configure(state="normal")
-        self.text.delete("1.0", "end")
-        self.text.configure(state="disabled")
-
-    def _on_close(self):
-        if self._poll_id:
-            try:
-                self.win.after_cancel(self._poll_id)
-            except Exception:
-                pass
-            self._poll_id = None
-        try:
-            self.win.destroy()
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                f.seek(self._file_pos)
+                new_lines = f.readlines()
+                self._file_pos = f.tell()
+                
+            for line in new_lines:
+                self._append_line(line)
+                
         except Exception:
             pass
+
+def open_log_viewer(root=None):
+    """Открывает окно логов (синглтон)."""
+    global _instance
+    app = get_qapp()
+    
+    if _instance is not None and _instance.isVisible():
+        _instance.raise_()
+        _instance.activateWindow()
+        return
+        
+    _instance = LogViewerDialog()
+    _instance.show()
