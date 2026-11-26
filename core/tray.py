@@ -6,7 +6,7 @@ from core.stats import get_stats_text
 from core.version import __version__
 from core.logger import open_log_file
 from core.log_viewer import open_log_viewer
-
+from core.qt_utils import dispatcher
 
 def _make_icon_image():
     size = 64
@@ -17,8 +17,7 @@ def _make_icon_image():
     d.rectangle((28, 34, 36, 46), fill=(255, 255, 255, 255))
     return img
 
-
-def start_tray(on_quit, on_settings, on_history, on_meetings, on_prompt, on_help, sound_state, toggle_sound, tk_root_ref):
+def start_tray(on_quit, sound_state, toggle_sound):
     def _run():
         def quit_action(icon, item):
             icon.stop()
@@ -27,32 +26,22 @@ def start_tray(on_quit, on_settings, on_history, on_meetings, on_prompt, on_help
         def toggle_sound_action(icon, item):
             toggle_sound()
 
-        def settings_action(icon, item):
-            on_settings()
-
-        def open_log_action(icon, item):
-            open_log_file()
-
-        def view_log_action(icon, item):
-            root = tk_root_ref[0]
-            if root is not None:
-                root.after(0, lambda: open_log_viewer(root))
-
         menu = pystray.Menu(
             pystray.MenuItem(f"SuperDictate v{__version__}", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem(lambda item: get_stats_text()[0], None, enabled=False),
             pystray.MenuItem(lambda item: get_stats_text()[1], None, enabled=False),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("📝 История распознаваний", lambda: on_history() if on_history else None, default=True),
-            pystray.MenuItem("⚙️ Настройки...", settings_action),
-            pystray.MenuItem("❓ Как пользоваться", lambda: tk_root_ref[0].after(0, on_help)),
-            pystray.MenuItem("✍️ Промт", lambda: tk_root_ref[0].after(0, on_prompt)),
-            pystray.MenuItem("👁️ Просмотр логов", view_log_action),
-            pystray.MenuItem("📄 Открыть лог в блокноте", open_log_action),
-            pystray.MenuItem("📁 Папка встреч", lambda: tk_root_ref[0].after(0, on_meetings)),
+            pystray.MenuItem("⚙️ Настройки...", lambda icon, item: dispatcher.open_settings.emit()),
+            pystray.MenuItem("❓ Как пользоваться", lambda icon, item: dispatcher.open_help.emit()),
+            pystray.MenuItem("✍️ Промт", lambda icon, item: dispatcher.open_prompt.emit()),
+            pystray.MenuItem("👁️ Просмотр логов", lambda icon, item: dispatcher.open_log.emit()),
+            pystray.MenuItem("📄 Открыть лог в блокноте", lambda icon, item: open_log_file()),
+            pystray.MenuItem("📁 Папка встреч", lambda icon, item: dispatcher.open_meetings.emit()),
+            pystray.MenuItem("📝 Распознавания", lambda icon, item: dispatcher.open_history.emit(), default=True),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("❌ Выход", quit_action),
+            pystray.MenuItem("🔊 Звуковые сигналы", toggle_sound_action, checked=lambda item: sound_state[0]),
+            pystray.MenuItem("❌ Выход", quit_action)
         )
 
         icon = pystray.Icon("superdictate", _make_icon_image(), "SuperDictate", menu)

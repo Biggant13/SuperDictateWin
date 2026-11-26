@@ -4,13 +4,17 @@ import os
 import time
 import sys
 import ctypes
+from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QTimer
+from core.qt_utils import get_qapp, dispatcher
 
-# Принудительная инициализация COM (STA) для предотвращения конфликтов Tkinter и PySide6
+# Принудительная инициализация COM (STA) для предотвращения конфликтов
 if sys.platform == "win32":
     try:
         ctypes.windll.ole32.OleInitialize(None)
     except Exception:
         pass
+
 from core.config import BASE_DIR
 
 _crash_log = open(os.path.join(BASE_DIR, "crash.log"), "a", encoding="utf-8")
@@ -24,7 +28,6 @@ import queue
 import json
 import multiprocessing
 
-
 from core.platform import get_platform
 from core.logger import setup_logger
 logger = setup_logger()
@@ -35,10 +38,12 @@ from core.transcriber import Transcriber
 from core.ui import RecordingOverlay
 from core.tray import start_tray
 from core.sounds import beep_error, beep_start, beep_stop, shutdown as shutdown_sounds
-from core.settings import open_settings_window
 from core.utils import parse_hotkey, get_context
 from core.meeting import MeetingRecorder
 from core.hotkey import HotkeyManager
+from core.history import open_history_window
+from core.settings import open_settings_window
+from core.log_viewer import open_log_viewer
 
 task_queue = queue.Queue()
 
@@ -57,7 +62,7 @@ def _run_splash_process(q):
                     return
                 else:
                     splash.set_status(msg)
-        except queue.Empty:  # <--- ИСПОЛЬЗУЕМ ГЛОБАЛЬНЫЙ QUEUE
+        except queue.Empty:
             pass
         if splash.root.winfo_exists():
             splash.root.after(100, check_queue)
@@ -111,12 +116,10 @@ def main():
             import traceback
             logger.error(f"[Main] Ошибка инициализации: {e}\n{traceback.format_exc()}")
         finally:
-            time.sleep(1.0) # Даем пользователю увидеть финальный статус
+            time.sleep(1.0)
             q.put("CLOSE")
-            p.join(timeout=2.0) # Ждем, пока процесс сплэша закроется
+            p.join(timeout=2.0)
 
-    # Запускаем загрузку в ГЛАВНОМ потоке. 
-    # Так как сплэш в другом процессе, его анимация не зависнет!
     init_app()
 
     if 'error' in state:
@@ -175,7 +178,7 @@ def main():
 
     def toggle_meeting():
         if meeting_recorder.is_processing:
-            if sound_state[0]: beep_error(beep_vol) # Нельзя начать новую, пока идет обработка
+            if sound_state[0]: beep_error(beep_vol)
             return
             
         if not meeting_recorder.recording:
@@ -243,6 +246,12 @@ def main():
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[Main] Ошибка сохранения позиции оверлея: {e}")
+
+    # Создаем QApplication (главный цикл Qt)
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
 
     overlay = RecordingOverlay(
         is_recording_cb=lambda: audio_mic.recording or audio_sys.recording,
@@ -324,32 +333,30 @@ def main():
         except Exception as e: logger.error(f"[Shutdown] listener: {e}")
         try: shutdown_sounds()
         except Exception as e: logger.error(f"[Shutdown] sounds: {e}")
-        try: overlay.root.after(0, overlay.quit)
+        try: overlay.close()
         except Exception as e: logger.error(f"[Shutdown] overlay: {e}")
+        try: app.quit()
+        except Exception as e: logger.error(f"[Shutdown] app: {e}")
 
+    # --- ФУНКЦИИ ОКОН (Вызываются напрямую через сигналы Qt) ---
     def open_settings():
         def on_save(new_cfg):
             nonlocal copy_method
             cfg.update(new_cfg)
-            overlay.update_position()
+            # Перерисовываем позицию оверлея, если она изменилась
+            overlay._update_position(cfg.get("overlay_x"), cfg.get("overlay_y"))
             audio_mic.set_device(cfg.get("input_device", ""))
             copy_method = cfg.get("copy_method", "insert")
             smart_insertion[0] = bool(cfg.get("smart_insertion", True))
-        overlay.root.after(0, lambda: open_settings_window(overlay.root, cfg, on_save))
+        open_settings_window(None, cfg, on_save)
 
     def open_history():
-        from core.history import open_history_window
-        overlay.root.after(0, lambda: open_history_window(overlay.root))
+        open_history_window(None)
 
     def open_meetings_folder():
         import subprocess
-        import sys
-        import os
-        
         folder = os.path.abspath("meetings")
-        # Создаем папку, если ее еще нет, чтобы проводник не выдал ошибку
         os.makedirs(folder, exist_ok=True)
-        
         try:
             if sys.platform == "win32":
                 os.startfile(folder)
@@ -360,11 +367,7 @@ def main():
 
     def open_prompt():
         from core.prompt_editor import open_prompt_window
-        
-        # Получаем словарь промтов и активный промт
-        prompts_dict = cfg.get("meeting_prompts", {
-            "По умолчанию": "Ты — ассистент, который делает краткое резюме встреч. Выделяй ключевые темы, принятые решения и задачи (action items)."
-        })
+        prompts_dict = cfg.get("meeting_prompts", {"По умолчанию": "Ты — ассистент, который делает краткое резюме встреч..."})
         if not prompts_dict:
             prompts_dict = {"По умолчанию": "Ты — ассистент, который делает краткое резюме встреч..."}
         active_name = cfg.get("active_meeting_prompt", "По умолчанию")
@@ -376,22 +379,25 @@ def main():
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
 
-        overlay.root.after(0, lambda: open_prompt_window(overlay.root, prompts_dict, active_text, on_save))
+        open_prompt_window(None, prompts_dict, active_text, on_save)
 
     def open_help():
         from core.help_window import open_help_window
-        overlay.root.after(0, lambda: open_help_window(overlay.root))
-    
+        open_help_window(None)
+
+    # --- ПОДКЛЮЧЕНИЕ СИГНАЛОВ ТРЕЯ ---
+    dispatcher.open_settings.connect(open_settings)
+    dispatcher.open_history.connect(open_history)
+    dispatcher.open_meetings.connect(open_meetings_folder)
+    dispatcher.open_prompt.connect(open_prompt)
+    dispatcher.open_help.connect(open_help)
+    dispatcher.open_log.connect(lambda: open_log_viewer(None))
+
+    # Запускаем трей (без коллбэков, только базовые действия)
     start_tray(
         on_quit=_shutdown,
-        on_settings=open_settings,
-        on_history=open_history,
-        on_meetings=open_meetings_folder,
-        on_prompt=open_prompt,
-        on_help=open_help,
         sound_state=sound_state,
         toggle_sound=toggle_sound,
-        tk_root_ref=[overlay.root],
     )
 
     def _sigint(sig, frame):
@@ -400,7 +406,7 @@ def main():
     signal.signal(signal.SIGINT, _sigint)
 
     try:
-        overlay.run()
+        app.exec()  # Запускаем главный цикл Qt
     finally:
         _shutdown()
 
