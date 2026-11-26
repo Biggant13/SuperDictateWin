@@ -1,24 +1,26 @@
 import os
 import json
-import tkinter as tk
-from tkinter import messagebox
 import pyperclip
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+                               QScrollArea, QWidget, QFrame, QMessageBox, QApplication)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QCursor
+
 from core.config import BASE_DIR
+from core.qt_utils import get_qapp
 
 HISTORY_FILE = os.path.join(BASE_DIR, "history.json")
-MAX_RECORDS = 100  # Храним последние 100 записей
+MAX_RECORDS = 100
 
+# --- ЛОГИКА РАБОТЫ С ФАЙЛОМ ---
 def _save_history(history):
-    """Атомарно сохраняет историю в файл."""
     try:
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=2, ensure_ascii=False)
     except Exception as e:
         print(f"[History] Ошибка сохранения: {e}")
 
-
 def _migrate_entry(item):
-    """Приводит запись любого формата к {'text': str, 'favorite': bool}."""
     if isinstance(item, str):
         return {"text": item, "favorite": False}
     if isinstance(item, dict) and "text" in item:
@@ -46,191 +48,220 @@ def load_history():
         return []
 
 def add_record(text):
-    """Сохраняет новый текст в историю."""
     if not text or not text.strip():
         return
     history = load_history()
     history.insert(0, {"text": text.strip(), "favorite": False})
-    if len(history) > MAX_RECORDS:
-        favorites = [h for h in history if h.get("favorite", False)]
-        regular = [h for h in history if not h.get("favorite", False)]
-        # Оставляем все избранные + столько обычных, сколько влезет в лимит
-        slots_left = max(0, MAX_RECORDS - len(favorites))
-        history = favorites + regular[:slots_left]
-        # Восстанавливаем хронологический порядок (новые сверху)
-        history.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    history = history[:MAX_RECORDS]
     _save_history(history)
 
-# --- НОВАЯ ФУНКЦИЯ ОЧИСТКИ ---
 def clear_history():
-    """Очищает историю, сохраняя избранные записи."""
     history = load_history()
     favorites = [h for h in history if h.get("favorite", False)]
     _save_history(favorites)
 
+
+# --- ВИЗУАЛЬНАЯ ЧАСТЬ (PySide6) ---
+
+class RecordCard(QFrame):
+    """Карточка одной записи."""
+    def __init__(self, parent_dialog, index, record_data):
+        super().__init__()
+        self.parent_dialog = parent_dialog
+        self.index = index
+        self.record_data = record_data
+        self.is_fav = record_data.get("favorite", False)
+        
+        self.setObjectName("RecordCard")
+
+        # Настройка карточки (без лишних отступов внутри)
+        self.setStyleSheet(f"""
+            QFrame#RecordCard {{
+                background-color: {"#3a3a2a" if self.is_fav else "#2d2d2d"};
+                border: 1px solid {"#ffc107" if self.is_fav else "#444"};
+                border-radius: 6px;
+            }}
+            QFrame#RecordCard:hover {{
+                border: 1px solid {"#ffca28" if self.is_fav else "#777"};
+            }}
+        """)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 6, 8, 6) # Компактные отступы
+        layout.setSpacing(8)
+
+        # 1. Кнопка-звезда (используем строгие символы)
+        self.btn_star = QPushButton("★" if self.is_fav else "☆")
+        self.btn_star.setFixedSize(25, 25)
+        self.btn_star.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_star.setStyleSheet(f"background: transparent; border: none; font-size: 18px; color: {'#ffc107' if self.is_fav else '#888'};")
+        self.btn_star.clicked.connect(self.parent_dialog.toggle_favorite)
+        layout.addWidget(self.btn_star)
+
+        # 2. Текст (клик копирует)
+        self.lbl_text = QLabel(record_data.get("text", ""))
+        self.lbl_text.setWordWrap(True)
+        # background: transparent — убирает те самые прямоугольники!
+        self.lbl_text.setStyleSheet(f"background: transparent; color: {'#fff59d' if self.is_fav else '#ffffff'}; font-family: 'Segoe UI'; font-size: 13px;")
+        self.lbl_text.setCursor(QCursor(Qt.PointingHandCursor))
+        self.lbl_text.mousePressEvent = self.copy_text
+        layout.addWidget(self.lbl_text, stretch=1)
+
+        # 3. Кнопка удаления (крестик вместо мусорки)
+        self.btn_trash = QPushButton("✕")
+        self.btn_trash.setFixedSize(25, 25)
+        self.btn_trash.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_trash.setStyleSheet("background: transparent; border: none; font-size: 16px; color: #f44336; font-weight: bold;")
+        self.btn_trash.clicked.connect(self.parent_dialog.delete_record)
+        layout.addWidget(self.btn_trash)
+
+    def copy_text(self, event):
+        text = self.record_data.get("text", "")
+        # Используем pyperclip вместо QApplication.clipboard() — обходит ошибку COM в Windows
+        try:
+            pyperclip.copy(text)
+            self.lbl_text.setText("✅ Скопировано!")
+            QApplication.processEvents()
+            
+            import threading
+            import time
+            def restore():
+                time.sleep(1)
+                self.lbl_text.setText(text)
+            threading.Thread(target=restore, daemon=True).start()
+        except Exception as e:
+            print(f"Ошибка копирования: {e}")
+
+
+class HistoryDialog(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("История распознаваний")
+        self.resize(550, 600)
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; }
+            QScrollArea { border: none; background-color: #1e1e1e; }
+            QWidget { background-color: #1e1e1e; }
+        """)
+        
+        self.history = load_history()
+        self.filter_favorites = False
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(10)
+
+        # --- Шапка с фильтром ---
+        header_layout = QHBoxLayout()
+        self.btn_filter = QPushButton("★ Показать только избранные")
+        self.btn_filter.setStyleSheet("""
+            QPushButton {
+                background-color: #e67e22; color: white; font-family: 'Segoe UI'; font-weight: bold;
+                font-size: 13px; border-radius: 4px; padding: 6px 12px; border: 1px solid #d35400;
+            }
+            QPushButton:hover { background-color: #d35400; }
+        """)
+        self.btn_filter.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_filter.clicked.connect(self.toggle_filter)
+        header_layout.addWidget(self.btn_filter)
+        header_layout.addStretch()
+        main_layout.addLayout(header_layout)
+
+        # --- Скролл с карточками ---
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_content = QWidget()
+        self.scroll_layout = QVBoxLayout(self.scroll_content)
+        self.scroll_layout.setAlignment(Qt.AlignTop)
+        self.scroll_layout.setSpacing(2) # Минимальный отступ между карточками
+        self.scroll_area.setWidget(self.scroll_content)
+        main_layout.addWidget(self.scroll_area)
+
+        # --- Подвал с очисткой ---
+        self.btn_clear = QPushButton("🗑 Очистить историю (без избранных)")
+        self.btn_clear.setStyleSheet("""
+            QPushButton {
+                background-color: #c0392b; color: white; font-family: 'Segoe UI'; font-weight: bold;
+                font-size: 13px; border-radius: 4px; padding: 8px; border: none;
+            }
+            QPushButton:hover { background-color: #e74c3c; }
+        """)
+        self.btn_clear.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_clear.clicked.connect(self.clear_history_action)
+        main_layout.addWidget(self.btn_clear)
+
+        self.render_list()
+
+    def render_list(self):
+        while self.scroll_layout.count():
+            child = self.scroll_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        visible_items = []
+        for i, item in enumerate(self.history):
+            if self.filter_favorites and not item.get("favorite", False):
+                continue
+            visible_items.append((i, item))
+
+        if not visible_items:
+            lbl_empty = QLabel("Нет записей для отображения")
+            lbl_empty.setStyleSheet("color: #888; font-size: 14px; background: transparent;")
+            lbl_empty.setAlignment(Qt.AlignCenter)
+            self.scroll_layout.addWidget(lbl_empty)
+        else:
+            for idx, item in visible_items:
+                card = RecordCard(self, idx, item)
+                self.scroll_layout.addWidget(card)
+
+    def toggle_filter(self):
+        self.filter_favorites = not self.filter_favorites
+        if self.filter_favorites:
+            self.btn_filter.setText("★ Показать все записи")
+            self.btn_filter.setStyleSheet("""
+                QPushButton {
+                    background-color: #555; color: white; font-family: 'Segoe UI'; font-weight: bold;
+                    font-size: 13px; border-radius: 4px; padding: 6px 12px; border: 1px solid #777;
+                }
+            """)
+        else:
+            self.btn_filter.setText("★ Показать только избранные")
+            self.btn_filter.setStyleSheet("""
+                QPushButton {
+                    background-color: #e67e22; color: white; font-family: 'Segoe UI'; font-weight: bold;
+                    font-size: 13px; border-radius: 4px; padding: 6px 12px; border: 1px solid #d35400;
+                }
+            """)
+        self.render_list()
+
+    def toggle_favorite(self):
+        sender = self.sender()
+        card = sender.parent()
+        idx = card.index
+        self.history[idx]["favorite"] = not self.history[idx].get("favorite", False)
+        _save_history(self.history)
+        self.render_list()
+
+    def delete_record(self):
+        sender = self.sender()
+        card = sender.parent()
+        idx = card.index
+        del self.history[idx]
+        _save_history(self.history)
+        self.render_list()
+
+    def clear_history_action(self):
+        fav_count = sum(1 for h in self.history if h.get("favorite", False))
+        msg = f"Удалить все обычные записи?\nИзбранные ({fav_count}) останутся." if fav_count > 0 else "Вы уверены, что хотите удалить всю историю?"
+        
+        reply = QMessageBox.question(self, 'Очистка', msg, QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.Yes:
+            clear_history()
+            self.history = load_history()
+            self.render_list()
+
 def open_history_window(root):
-    """Открывает окно со списком распознаваний."""
-    history = load_history()
-    state = {"filter_favorites": False}
-
-    win = tk.Toplevel(root)
-    win.title("История распознаваний")
-
-    # Позиционирование в правом нижнем углу
-    window_width = 500
-    window_height = 520
-    screen_width = win.winfo_screenwidth()
-    screen_height = win.winfo_screenheight()
-    x = screen_width - window_width - 40
-    y = screen_height - window_height - 80
-    win.geometry(f"{window_width}x{window_height}+{x}+{y}")
-    win.attributes("-topmost", True)
-
-    bg_color = "#1e1e1e"
-    fg_color = "#ffffff"
-    win.configure(bg=bg_color)
-
-    lbl = tk.Label(
-        win,
-        text="★ — в избранное · 🗑 — удалить · клик по тексту — скопировать",
-        bg=bg_color, fg=fg_color, font=("Segoe UI", 9),
-    )
-    lbl.pack(pady=5)
-
-    frame = tk.Frame(win, bg=bg_color)
-    frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-
-    scrollbar = tk.Scrollbar(frame)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-    text_widget = tk.Text(
-        frame,
-        wrap=tk.WORD,
-        yscrollcommand=scrollbar.set,
-        bg="#2b2b2b", fg=fg_color,
-        font=("Segoe UI", 10),
-        borderwidth=0, highlightthickness=0,
-        cursor="hand2",
-        padx=10, pady=10,
-    )
-    text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar.config(command=text_widget.yview)
-
-    text_widget.tag_configure("item", spacing1=5, spacing3=5, lmargin1=5, lmargin2=5)
-    text_widget.tag_configure("fav_bg", background="#fff59d", foreground="#000000")
-    text_widget.tag_configure("separator", foreground="#555555", justify="center")
-    text_widget.tag_configure("empty", foreground="#888888", justify="center", spacing1=20)
-    # ВАЖНО: эти теги созданы ПОСЛЕ fav_bg — их foreground имеет приоритет
-    text_widget.tag_configure("star_on", foreground="#e65100")
-    text_widget.tag_configure("star_off", foreground="#888888")
-
-    def render():
-        text_widget.config(state=tk.NORMAL)
-        text_widget.delete(1.0, tk.END)
-
-        visible = [
-            (i, item) for i, item in enumerate(history)
-            if not state["filter_favorites"] or item.get("favorite", False)
-        ]
-
-        if not visible:
-            msg = "Нет избранных записей" if state["filter_favorites"] else "История пуста"
-            text_widget.insert(tk.END, msg + "\n", ("empty",))
-        else:
-            for i, item in visible:
-                is_fav = item.get("favorite", False)
-                row_tags = ["item", "fav_bg"] if is_fav else ["item"]
-                star_char = "★" if is_fav else "☆"
-                star_tag = "star_on" if is_fav else "star_off"
-                text_widget.insert(tk.END, star_char + " ",
-                                   (f"favtoggle_{i}", star_tag, *row_tags))
-                text_widget.insert(tk.END, item["text"], (f"item_{i}", *row_tags))
-                text_widget.insert(tk.END, " ", tuple(row_tags))
-                text_widget.insert(tk.END, "🗑", (f"trash_{i}", *row_tags))
-                text_widget.insert(tk.END, "\n", tuple(row_tags))
-                text_widget.insert(tk.END, "─" * 25 + "\n", ("separator",))
-
-        text_widget.config(state=tk.DISABLED)
-
-    def on_click(event):
-        index = text_widget.index(f"@{event.x},{event.y}")
-        tags = text_widget.tag_names(index)
-
-        # Приоритет: звезда > мусорка > копирование
-        for tag in tags:
-            if tag.startswith("favtoggle_"):
-                idx = int(tag.split("_")[1])
-                history[idx]["favorite"] = not history[idx].get("favorite", False)
-                _save_history(history)
-                render()
-                return
-        for tag in tags:
-            if tag.startswith("trash_"):
-                try:
-                    idx = int(tag.rsplit("_", 1)[1])
-                except (ValueError, IndexError):
-                    continue
-                del history[idx]
-                _save_history(history)
-                render()
-                return
-        for tag in tags:
-            if tag.startswith("item_"):
-                idx = int(tag.split("_")[1])
-                pyperclip.copy(history[idx]["text"])
-                win.title("История распознаваний (Скопировано!)")
-                win.after(1500, lambda: win.title("История распознаваний"))
-                return
-
-    text_widget.bind("<ButtonRelease-1>", on_click)
-
-    def on_toggle_filter():
-        state["filter_favorites"] = not state["filter_favorites"]
-        btn_filter.config(
-            text="★ Все записи" if state["filter_favorites"] else "★ Только избранные"
-        )
-        render()
-
-    def on_clear():
-        if not history:
-            return
-        fav_count = sum(1 for h in history if h.get("favorite", False))
-        if fav_count > 0:
-            msg = (
-                f"Удалить все обычные записи?\n"
-                f"Избранные ({fav_count}) останутся."
-            )
-        else:
-            msg = "Вы уверены, что хотите удалить всю историю?"
-        if not messagebox.askyesno("Очистка", msg, parent=win):
-            return
-        history[:] = [h for h in history if h.get("favorite", False)]
-        _save_history(history)
-        render()
-        win.title("История распознаваний (Очищено!)")
-        win.after(1500, lambda: win.title("История распознаваний"))
-
-    btn_frame = tk.Frame(win, bg=bg_color)
-    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=10)
-
-    btn_filter = tk.Button(
-        btn_frame,
-        text="★ Только избранные",
-        command=on_toggle_filter,
-        bg="#ffa726", fg="white",
-        font=("Segoe UI", 9, "bold"),
-        relief="flat", cursor="hand2",
-    )
-    btn_filter.pack(side=tk.LEFT, padx=5)
-
-    btn_clear = tk.Button(
-        btn_frame,
-        text="🗑 Очистить историю",
-        command=on_clear,
-        bg="#f44336", fg="white",
-        font=("Segoe UI", 9, "bold"),
-        relief="flat", cursor="hand2",
-    )
-    btn_clear.pack(side=tk.RIGHT, padx=5)
-
-    render()
+    """Открывает окно истории."""
+    app = get_qapp()
+    dialog = HistoryDialog()
+    dialog.exec()

@@ -2,6 +2,15 @@ from core.system_audio import SystemAudioRecorder
 import faulthandler
 import os
 import time
+import sys
+import ctypes
+
+# Принудительная инициализация COM (STA) для предотвращения конфликтов Tkinter и PySide6
+if sys.platform == "win32":
+    try:
+        ctypes.windll.ole32.OleInitialize(None)
+    except Exception:
+        pass
 from core.config import BASE_DIR
 
 _crash_log = open(os.path.join(BASE_DIR, "crash.log"), "a", encoding="utf-8")
