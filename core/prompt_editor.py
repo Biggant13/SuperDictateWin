@@ -1,184 +1,222 @@
-import tkinter as tk
-from tkinter import messagebox, simpledialog
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+                               QListWidget, QListWidgetItem, QPlainTextEdit, QMessageBox, 
+                               QInputDialog, QWidget, QSplitter)
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QCursor, QFont
+from core.qt_utils import get_qapp
 
-def open_prompt_window(root, prompts_dict, active_prompt_name, on_save_callback):
-    win = tk.Toplevel(root)
-    win.title("Менеджер промтов для встреч")
-    
-    # Высота увеличена до 530
-    window_width = 700
-    window_height = 530
-    screen_width = win.winfo_screenwidth()
-    screen_height = win.winfo_screenheight()
-    x = screen_width - window_width - 40
-    y = screen_height - window_height - 80
-    win.geometry(f"{window_width}x{window_height}+{x}+{y}")
-    win.attributes("-topmost", True)
-    win.minsize(600, 450)
-    
-    bg_color = "#1e1e1e"
-    fg_color = "#ffffff"
-    win.configure(bg=bg_color)
+class PromptEditorDialog(QDialog):
+    def __init__(self, prompts_dict, active_prompt_name, on_save_callback):
+        super().__init__()
+        self.prompts_dict = prompts_dict.copy() # Работаем с копией, чтобы можно было отменить
+        self.active_name = active_prompt_name
+        self.on_save_callback = on_save_callback
+        self.current_selected_name = active_prompt_name
 
-    # --- Левая панель (Список промтов) ---
-    left_frame = tk.Frame(win, bg=bg_color, width=220)
-    left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=10)
-    left_frame.pack_propagate(False)
+        self.setWindowTitle("Менеджер промтов")
+        self.resize(750, 500)
+        self.setStyleSheet("""
+            QDialog { background-color: #1e1e1e; }
+            QLabel { color: #cccccc; font-family: 'Segoe UI'; font-size: 13px; }
+            QListWidget { 
+                background-color: #252525; color: #ffffff; border: 1px solid #333; 
+                border-radius: 4px; padding: 5px; font-family: 'Segoe UI'; font-size: 13px;
+            }
+            QListWidget::item { padding: 5px; border-radius: 3px; }
+            QListWidget::item:selected { background-color: #3a3a3a; color: #4CAF50; font-weight: bold; }
+            QPlainTextEdit { 
+                background-color: #2d2d2d; color: #ffffff; border: 1px solid #444; 
+                border-radius: 4px; padding: 8px; font-family: 'Segoe UI'; font-size: 13px;
+            }
+            QPushButton { 
+                background-color: #2d2d2d; color: white; border: 1px solid #444; 
+                border-radius: 4px; padding: 6px 12px; font-family: 'Segoe UI';
+            }
+            QPushButton:hover { background-color: #3a3a3a; }
+            QPushButton#btn_new { border-color: #2196f3; }
+            QPushButton#btn_new:hover { background-color: #1e3a5f; }
+            QPushButton#btn_del { border-color: #f44336; }
+            QPushButton#btn_del:hover { background-color: #5f1e1e; }
+            QPushButton#btn_save { 
+                background-color: #4CAF50; color: white; border: none; font-weight: bold; font-size: 14px;
+            }
+            QPushButton#btn_save:hover { background-color: #45a049; }
+        """)
 
-    tk.Label(left_frame, text="Сохраненные промты:", bg=bg_color, fg=fg_color, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 5))
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(15)
 
-    listbox = tk.Listbox(left_frame, bg="#2b2b2b", fg=fg_color, font=("Segoe UI", 10), relief="flat", highlightthickness=0)
-    listbox.pack(fill=tk.BOTH, expand=True)
+        # Используем Splitter для возможности растягивать панели
+        splitter = QSplitter(Qt.Horizontal)
+        
+        # ==========================================
+        # ЛЕВАЯ ПАНЕЛЬ (Список)
+        # ==========================================
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(0, 0, 10, 0)
+        
+        left_layout.addWidget(QLabel("Сохраненные промты:"))
+        
+        self.list_widget = QListWidget()
+        self.list_widget.itemSelectionChanged.connect(self.on_select)
+        left_layout.addWidget(self.list_widget)
+        
+        # Кнопки под списком
+        btn_layout = QHBoxLayout()
+        self.btn_new = QPushButton("➕ Новый")
+        self.btn_new.setObjectName("btn_new")
+        self.btn_new.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_new.setFixedHeight(35)
+        self.btn_new.clicked.connect(self.new_prompt)
+        
+        self.btn_del = QPushButton("🗑 Удалить")
+        self.btn_del.setObjectName("btn_del")
+        self.btn_del.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_del.setFixedHeight(35)
+        self.btn_del.clicked.connect(self.delete_prompt)
+        
+        btn_layout.addWidget(self.btn_new)
+        btn_layout.addWidget(self.btn_del)
+        left_layout.addLayout(btn_layout)
+        
+        splitter.addWidget(left_panel)
 
-    # --- Правая панель (Редактор) ---
-    right_frame = tk.Frame(win, bg=bg_color)
-    right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10), pady=10)
+        # ==========================================
+        # ПРАВАЯ ПАНЕЛЬ (Редактор)
+        # ==========================================
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(10, 0, 0, 0)
+        
+        right_layout.addWidget(QLabel("Текст промта:"))
+        
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setPlaceholderText("Напишите здесь инструкцию для нейросети...")
+        right_layout.addWidget(self.text_edit)
+        
+        self.btn_save = QPushButton("💾 Сохранить и использовать")
+        self.btn_save.setObjectName("btn_save")
+        self.btn_save.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_save.setFixedHeight(35)
+        self.btn_save.clicked.connect(self.save_prompt)
+        right_layout.addWidget(self.btn_save)
 
-    tk.Label(right_frame, text="Текст промта (можно копировать Ctrl+C / Ctrl+V):", bg=bg_color, fg=fg_color, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 5))
+        splitter.addWidget(right_panel)
+        splitter.setHandleWidth(2)
+        splitter.setSizes([250, 500]) # Начальная ширина панелей
+        
+        main_layout.addWidget(splitter)
+        
+        # Инициализация списка
+        self.refresh_list()
+        self.load_text_to_editor(self.current_selected_name)
 
-    text_frame = tk.Frame(right_frame, bg=bg_color)
-    text_frame.pack(fill=tk.BOTH, expand=True)
-    
-    scrollbar = tk.Scrollbar(text_frame)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-    
-    text_widget = tk.Text(
-        text_frame, wrap=tk.WORD, yscrollcommand=scrollbar.set,
-        bg="#2b2b2b", fg=fg_color, font=("Segoe UI", 10),
-        borderwidth=0, highlightthickness=0, padx=10, pady=10
-    )
-    text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar.config(command=text_widget.yview)
-
-    # --- Надежное копирование и вставка ---
-    # 1. Контекстное меню по правому клику
-    context_menu = tk.Menu(win, tearoff=0, bg="#2b2b2b", fg="white")
-    context_menu.add_command(label="Копировать", command=lambda: text_widget.event_generate("<<Copy>>"))
-    context_menu.add_command(label="Вставить", command=lambda: text_widget.event_generate("<<Paste>>"))
-    
-    def show_context_menu(event):
-        context_menu.tk_popup(event.x_root, event.y_root)
-    
-    text_widget.bind("<Button-3>", show_context_menu)
-    
-    # 2. Явные горячие клавиши (обход багов Tkinter)
-    def copy_text(event=None):
-        try:
-            sel = text_widget.get(tk.SEL_FIRST, tk.SEL_LAST)
-            win.clipboard_clear()
-            win.clipboard_append(sel)
-        except tk.TclError:
-            pass
-        return "break"
-
-    def paste_text(event=None):
-        try:
-            txt = win.clipboard_get()
-            text_widget.insert(tk.INSERT, txt)
-        except tk.TclError:
-            pass
-        return "break"
-
-    text_widget.bind("<Control-c>", copy_text)
-    text_widget.bind("<Control-v>", paste_text)
-    text_widget.bind("<Control-C>", copy_text)
-    text_widget.bind("<Control-V>", paste_text)
-
-    # --- Логика работы с промтами ---
-    current_selected_name = [None]
-    active_name_ref = [active_prompt_name]
-
-    def get_actual_name(display_name):
-        return display_name.replace("✅", "").strip()
-
-    def refresh_list():
-        listbox.delete(0, tk.END)
-        for i, name in enumerate(prompts_dict.keys()):
-            if name == active_name_ref[0]:
-                listbox.insert(tk.END, f"✅ {name}")
-            else:
-                listbox.insert(tk.END, f"   {name}")
-            if name == current_selected_name[0]:
-                listbox.selection_set(i)
-                listbox.see(i)
-
-    def on_select(event):
-        selection = listbox.curselection()
-        if selection:
-            display_name = listbox.get(selection[0])
-            name = get_actual_name(display_name)
-            current_selected_name[0] = name
-            active_name_ref[0] = name
-            text_widget.delete(1.0, tk.END)
-            text_widget.insert(tk.END, prompts_dict.get(name, ""))
+    def refresh_list(self):
+        self.list_widget.blockSignals(True)
+        self.list_widget.clear()
+        
+        for name in self.prompts_dict.keys():
+            display_name = f"✅ {name}" if name == self.active_name else f"   {name}"
+            item = QListWidgetItem(display_name)
             
-            # Сохраняем активный промт в конфиг сразу при клике
-            on_save_callback(prompts_dict, active_name_ref[0])
-            refresh_list()
+            # Сохраняем реальное имя в данных элемента
+            item.setData(Qt.UserRole, name)
+            
+            if name == self.active_name:
+                item.setForeground(Qt.green) # Подсветка активного
+                
+            self.list_widget.addItem(item)
+            
+            if name == self.current_selected_name:
+                self.list_widget.setCurrentItem(item)
+                
+        self.list_widget.blockSignals(False)
 
-    listbox.bind("<<ListboxSelect>>", on_select)
-
-    def new_prompt():
-        listbox.selection_clear(0, tk.END)
-        current_selected_name[0] = None
-        text_widget.delete(1.0, tk.END)
-        text_widget.focus_set()
-
-    def delete_prompt():
-        if not current_selected_name[0]:
-            messagebox.showwarning("Внимание", "Выберите промт из списка для удаления.", parent=win)
+    def on_select(self):
+        selected_items = self.list_widget.selectedItems()
+        if not selected_items:
             return
-        if messagebox.askyesno("Удаление", f"Удалить промт '{current_selected_name[0]}'?", parent=win):
-            del prompts_dict[current_selected_name[0]]
+            
+        item = selected_items[0]
+        name = item.data(Qt.UserRole)
+        
+        # При клике промт сразу становится активным для следующих записей
+        self.current_selected_name = name
+        self.active_name = name 
+        self.load_text_to_editor(name)
+        self.on_save_callback(self.prompts_dict, self.active_name)
+        self.refresh_list()
+
+    def load_text_to_editor(self, name):
+        self.text_edit.blockSignals(True)
+        if name and name in self.prompts_dict:
+            self.text_edit.setPlainText(self.prompts_dict[name])
+        else:
+            self.text_edit.clear()
+        self.text_edit.blockSignals(False)
+
+    def new_prompt(self):
+        self.list_widget.clearSelection()
+        self.current_selected_name = None
+        self.text_edit.clear()
+        self.text_edit.setFocus()
+
+    def delete_prompt(self):
+        if not self.current_selected_name:
+            QMessageBox.warning(self, "Внимание", "Выберите промт из списка для удаления.")
+            return
+            
+        reply = QMessageBox.question(self, 'Удаление', 
+                                     f"Удалить промт '{self.current_selected_name}'?", 
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        
+        if reply == QMessageBox.Yes:
+            del self.prompts_dict[self.current_selected_name]
             
             # Если удалили активный, делаем активным первый из оставшихся
-            if active_name_ref[0] == current_selected_name[0]:
-                active_name_ref[0] = list(prompts_dict.keys())[0] if prompts_dict else ""
-            
-            current_selected_name[0] = active_name_ref[0]
-            on_save_callback(prompts_dict, active_name_ref[0])
-            refresh_list()
+            if self.active_name == self.current_selected_name:
+                self.active_name = list(self.prompts_dict.keys())[0] if self.prompts_dict else ""
+                
+            self.current_selected_name = self.active_name
+            self.on_save_callback(self.prompts_dict, self.active_name)
+            self.refresh_list()
+            self.load_text_to_editor(self.current_selected_name)
 
-    def save_prompt():
-        text = text_widget.get(1.0, tk.END).strip()
+    def save_prompt(self):
+        text = self.text_edit.toPlainText().strip()
         if not text:
-            messagebox.showwarning("Внимание", "Текст промта не может быть пустым.", parent=win)
+            QMessageBox.warning(self, "Внимание", "Текст промта не может быть пустым.")
             return
 
-        name = current_selected_name[0]
+        name = self.current_selected_name
         if name:
-            prompts_dict[name] = text
-            active_name_ref[0] = name
-            on_save_callback(prompts_dict, active_name_ref[0])
-            refresh_list()
-            messagebox.showinfo("Сохранено", f"Промт '{name}' обновлен и выбран!", parent=win)
+            # Обновляем существующий
+            self.prompts_dict[name] = text
+            self.active_name = name
+            self.on_save_callback(self.prompts_dict, self.active_name)
+            self.refresh_list()
+            QMessageBox.information(self, "Сохранено", f"Промт '{name}' обновлен и выбран!")
         else:
-            new_name = simpledialog.askstring("Новый промт", "Введите название для этого промта:", parent=win)
-            if new_name:
+            # Создаем новый
+            new_name, ok = QInputDialog.getText(self, "Новый промт", "Введите название для этого промта:")
+            if ok and new_name.strip():
                 new_name = new_name.strip()
-                if new_name in prompts_dict:
-                    messagebox.showerror("Ошибка", "Промт с таким названием уже существует.", parent=win)
+                if new_name in self.prompts_dict:
+                    QMessageBox.critical(self, "Ошибка", "Промт с таким названием уже существует.")
                     return
-                prompts_dict[new_name] = text
-                active_name_ref[0] = new_name
-                current_selected_name[0] = new_name
-                on_save_callback(prompts_dict, active_name_ref[0])
-                refresh_list()
-                messagebox.showinfo("Сохранено", f"Создан новый промт '{new_name}'!", parent=win)
+                    
+                self.prompts_dict[new_name] = text
+                self.active_name = new_name
+                self.current_selected_name = new_name
+                self.on_save_callback(self.prompts_dict, self.active_name)
+                self.refresh_list()
+                QMessageBox.information(self, "Сохранено", f"Создан новый промт '{new_name}'!")
 
-    # Инициализация UI
-    refresh_list()
-    text_widget.insert(tk.END, prompts_dict.get(active_name_ref[0], ""))
-    
-    # Кнопки
-    btn_frame = tk.Frame(left_frame, bg=bg_color)
-    btn_frame.pack(fill=tk.X, pady=(10, 0))
 
-    btn_new = tk.Button(btn_frame, text="➕ Новый", command=new_prompt, bg="#2196f3", fg="white", relief="flat", cursor="hand2")
-    btn_new.pack(fill=tk.X, pady=2)
-    
-    btn_del = tk.Button(btn_frame, text="🗑 Удалить", command=delete_prompt, bg="#f44336", fg="white", relief="flat", cursor="hand2")
-    btn_del.pack(fill=tk.X, pady=2)
-
-    btn_save = tk.Button(right_frame, text="💾 Сохранить и использовать для встреч", command=save_prompt, bg="#4caf50", fg="white", font=("Segoe UI", 10, "bold"), relief="flat", cursor="hand2")
-    btn_save.pack(fill=tk.X, pady=(10, 0))
+def open_prompt_window(root, prompts_dict, active_prompt_name, on_save_callback):
+    """Открывает окно менеджера промтов."""
+    app = get_qapp()
+    dialog = PromptEditorDialog(prompts_dict, active_prompt_name, on_save_callback)
+    dialog.exec()
