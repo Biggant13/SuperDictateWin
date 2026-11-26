@@ -13,3 +13,4 @@ evdev>=1.6.0; sys_platform == "linux"
 psutil>=5.9
 soundcard>=0.4.2
 polyvoice>=0.14.0
+PySide6>=6.5.0
