@@ -226,6 +226,15 @@ def main():
         if audio_sys.recording: return "system"
         return "none"
 
+    def save_overlay_pos(x, y):
+        cfg["overlay_x"] = x
+        cfg["overlay_y"] = y
+        try:
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[Main] Ошибка сохранения позиции оверлея: {e}")
+
     overlay = RecordingOverlay(
         is_recording_cb=lambda: audio_mic.recording or audio_sys.recording,
         is_processing_cb=lambda: processing_lock.locked() or meeting_recorder.is_processing,
@@ -233,6 +242,9 @@ def main():
         level_cb=lambda: audio_mic.current_level if audio_mic.recording else (audio_sys.current_level if audio_sys.recording else 0.0),
         elapsed_cb=_get_elapsed,
         source_cb=get_record_source,
+        initial_x=cfg.get("overlay_x"),
+        initial_y=cfg.get("overlay_y"),
+        on_pos_change_cb=save_overlay_pos
     )
 
     platform.start_key_listener(on_any_press, on_any_release)

@@ -175,6 +175,11 @@ def open_settings_window(root, current_cfg, on_save_callback):
         selected_dev_name = device_var.get()
         new_cfg["input_device"] = device_map.get(selected_dev_name, "")
 
+        # Если в конфиге не осталось координат (например, удалили), 
+        # мы просто их не сохраняем, и оверлей вернется на место по умолчанию.
+        if "overlay_x" in new_cfg and "overlay_y" in new_cfg:
+            pass # Оставляем как есть
+
         try:
             old_gpu = current_cfg.get("use_gpu", True)
 

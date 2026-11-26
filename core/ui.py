@@ -22,12 +22,23 @@ class RecordingOverlay:
     COLOR_SEG_HIGH  = "#f44336"
 
     def __init__(self, is_recording_cb, is_processing_cb, position,
-                 level_cb=None, elapsed_cb=None, source_cb=None):
+                 level_cb=None, elapsed_cb=None, source_cb=None, 
+                 initial_x=None, initial_y=None, on_pos_change_cb=None):
         self.is_recording_cb = is_recording_cb
         self.is_processing_cb = is_processing_cb
         self.level_cb = level_cb
         self.elapsed_cb = elapsed_cb
         self.source_cb = source_cb
+        
+        self.initial_x = initial_x
+        self.initial_y = initial_y
+        self.on_pos_change_cb = on_pos_change_cb
+        
+        self._is_dragging = False
+        self._drag_start_x = 0
+        self._drag_start_y = 0
+        self._win_start_x = 0
+        self._win_start_y = 0
 
         self.root = tk.Tk()
         self.root.overrideredirect(True)
@@ -45,6 +56,9 @@ class RecordingOverlay:
             bg=self.COLOR_BG, highlightthickness=0
         )
         self.canvas.pack()
+        self.canvas.bind("<ButtonPress-1>", self._on_drag_start)
+        self.canvas.bind("<B1-Motion>", self._on_drag_motion)
+        self.canvas.bind("<ButtonRelease-1>", self._on_drag_end)
 
         # 1. Точка статуса
         self.dot = self.canvas.create_oval(
@@ -88,19 +102,53 @@ class RecordingOverlay:
         self._poll()
 
     def update_position(self):
-        """Вычисляет позицию внизу по центру экрана"""
+        """Восстанавливает позицию из конфига или ставит внизу по центру."""
         try:
-            self.root.update_idletasks() 
             screen_w = self.root.winfo_screenwidth()
             screen_h = self.root.winfo_screenheight()
             
-            x = (screen_w - self.WIDTH) // 2
-            y = screen_h - self.HEIGHT - 80  # 80px отступ от нижнего края
-            
+            # Если есть сохраненные координаты
+            if self.initial_x is not None and self.initial_y is not None:
+                x, y = self.initial_x, self.initial_y
+                # Защита от улетания за пределы экрана
+                if x < 0 or x > screen_w - 50 or y < 0 or y > screen_h - 50:
+                    x = (screen_w - self.WIDTH) // 2
+                    y = screen_h - self.HEIGHT - 80
+            else:
+                # По умолчанию (внизу по центру)
+                x = (screen_w - self.WIDTH) // 2
+                y = screen_h - self.HEIGHT - 80
+                
             self.root.geometry(f"+{int(x)}+{int(y)}")
         except Exception:
-            # Фоллбэк на всякий случай
             self.root.geometry("+100+100")
+
+    def _on_drag_start(self, event):
+        self._is_dragging = True
+        self._drag_start_x = event.x_root
+        self._drag_start_y = event.y_root
+        self._win_start_x = self.root.winfo_x()
+        self._win_start_y = self.root.winfo_y()
+
+    def _on_drag_motion(self, event):
+        if not self._is_dragging:
+            return
+        dx = event.x_root - self._drag_start_x
+        dy = event.y_root - self._drag_start_y
+        new_x = self._win_start_x + dx
+        new_y = self._win_start_y + dy
+        self.root.geometry(f"+{new_x}+{new_y}")
+
+    def _on_drag_end(self, event):
+        if not self._is_dragging:
+            return
+        self._is_dragging = False
+        new_x = self.root.winfo_x()
+        new_y = self.root.winfo_y()
+        
+        # Сохраняем позицию через коллбэк
+        if self.on_pos_change_cb:
+            self.on_pos_change_cb(new_x, new_y)
 
     def _set_active_segments(self, count):
         if count == self._active_count:
