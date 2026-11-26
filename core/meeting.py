@@ -4,6 +4,7 @@ import threading
 import datetime
 import numpy as np
 import logging
+from core.diarizer import SpeakerDiarizer
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,7 @@ class MeetingRecorder:
         self.audio_sys = audio_sys
         self.transcriber = transcriber
         self.processing_lock = processing_lock
+        self.diarizer = SpeakerDiarizer()
         
         self.recording = False
         self.is_processing = False
@@ -69,48 +71,66 @@ class MeetingRecorder:
 
     def _process_meeting(self):
         try:
-            # Забираем всё аудио
             mic_audio = self.audio_mic.get_audio()
             sys_audio = self.audio_sys.get_audio()
-            
+
             if mic_audio is None and sys_audio is None:
                 logger.warning("[Meeting] Нет аудио для расшифровки.")
                 return
-                
-            # Микшируем
+
+            # Микширование (оставляем как было)
             if mic_audio is not None and sys_audio is not None:
                 min_len = min(len(mic_audio), len(sys_audio))
-                if min_len > 0:
-                    mixed = mic_audio[:min_len] + sys_audio[:min_len]
-                    mixed = np.clip(mixed, -1.0, 1.0)
-                else:
-                    mixed = mic_audio if len(mic_audio) > len(sys_audio) else sys_audio
+                mixed = mic_audio[:min_len] + sys_audio[:min_len]
+                mixed = np.clip(mixed, -1.0, 1.0)
             elif mic_audio is not None:
                 mixed = mic_audio
             else:
                 mixed = sys_audio
-                
-            # Нарезаем на куски по 30 секунд (16 кГц * 30 = 480 000 сэмплов)
-            chunk_size = 16000 * 30
-            total_chunks = (len(mixed) + chunk_size - 1) // chunk_size
-            
+
+            # --- НОВЫЙ БЛОК: ДИАРИЗАЦИЯ ---
+            segments = self.diarizer.diarize(mixed, sample_rate=16000)
+
             with open(self.file_path, "a", encoding="utf-8") as f:
-                for i in range(total_chunks):
-                    chunk = mixed[i * chunk_size : (i + 1) * chunk_size]
-                    
-                    # Пропускаем полную тишину
-                    if float(np.sqrt(np.mean(chunk ** 2))) < 0.003:
-                        continue
+                if not segments:
+                    logger.warning("[Meeting] Диаризация не дала результатов. Сохраняем как единый текст.")
+                    # Фоллбэк: если диаризация не сработала, распознаем всё как один файл (старый способ)
+                    chunk_size = 16000 * 30
+                    for i in range(0, len(mixed), chunk_size):
+                        chunk = mixed[i:i+chunk_size]
+                        if float(np.sqrt(np.mean(chunk ** 2))) < 0.003: continue
+                        text = self.transcriber.transcribe_only(chunk, self.processing_lock)
+                        if text: f.write(text + "\n")
+                else:
+                    logger.info("[Meeting] Диаризация успешна. Распознаем по сегментам...")
+                    # Группируем соседние сегменты одного спикера, чтобы не резать речь на мелкие куски
+                    # и дать GigaAM больше контекста.
+                    grouped = []
+                    current = None
+                    for seg in segments:
+                        if current and seg["speaker"] == current["speaker"] and (seg["start"] - current["end"]) < 1.5:
+                            current["end"] = seg["end"]
+                        else:
+                            if current: grouped.append(current)
+                            current = seg
+                    if current: grouped.append(current)
+
+                    for seg in grouped:
+                        start_sample = int(seg["start"] * 16000)
+                        end_sample = int(seg["end"] * 16000)
+                        chunk = mixed[start_sample:end_sample]
+                        if len(chunk) < 16000 * 0.3: continue # Слишком короткий фрагмент
                         
-                    logger.info(f"[Meeting] Расшифровка куска {i+1} из {total_chunks}...")
-                    text = self.transcriber.transcribe_only(chunk, self.processing_lock)
-                    
-                    if text:
-                        f.write(text + "\n")
-                        f.flush()
-                        
+                        text = self.transcriber.transcribe_only(chunk, self.processing_lock)
+                        if text:
+                            spk = seg.get("speaker", 0)
+                            if isinstance(spk, int):
+                                speaker_label = f"Спикер {spk + 1}"
+                            else:
+                                speaker_label = str(spk).replace("SPEAKER_", "Спикер ")
+                            f.write(f"[{speaker_label}]: {text}\n")
             logger.info(f"[Meeting] ✅ Расшифровка завершена! Файл сохранен: {self.file_path}")
-            
+
         except Exception as e:
             logger.error(f"[Meeting] Ошибка при обработке: {e}")
         finally:
