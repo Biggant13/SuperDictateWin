@@ -100,8 +100,9 @@ class RecordingOverlay(QWidget):
         timer_str = f"{total // 60}:{total % 60:02d}"
         
         painter.setFont(QFont("Consolas", 11, QFont.Bold))
-        painter.drawText(self.WIDTH - self.PADDING - 30, 18, timer_str)
-
+        fm = painter.fontMetrics()
+        painter.drawText(self.WIDTH - self.PADDING - fm.horizontalAdvance(timer_str), 18, timer_str)
+        
         # 4. VU-метр
         bar_left = self.PADDING
         bar_right = self.WIDTH - self.PADDING
