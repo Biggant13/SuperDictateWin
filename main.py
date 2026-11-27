@@ -8,12 +8,6 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from PySide6.QtCore import QTimer
 from core.qt_utils import get_qapp, dispatcher
 
-# Принудительная инициализация COM (STA) для предотвращения конфликтов
-if sys.platform == "win32":
-    try:
-        ctypes.windll.ole32.OleInitialize(None)
-    except Exception:
-        pass
 
 from core.config import BASE_DIR
 

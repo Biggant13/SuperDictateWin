@@ -30,9 +30,10 @@ class RecordingOverlay(QWidget):
         self.source_cb = source_cb
         self.on_pos_change_cb = on_pos_change_cb
 
-        # Настройка окна: без рамок, поверх всех, прозрачный фон, не в таскбаре
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        # Добавляем WindowDoesNotAcceptFocus и WA_ShowWithoutActivating
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool | Qt.WindowDoesNotAcceptFocus)
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WA_ShowWithoutActivating)
         self.setFixedSize(self.WIDTH, self.HEIGHT)
 
         self._bg_alpha = 220 # Прозрачность (0-255)
@@ -102,7 +103,7 @@ class RecordingOverlay(QWidget):
         painter.setFont(QFont("Consolas", 11, QFont.Bold))
         fm = painter.fontMetrics()
         painter.drawText(self.WIDTH - self.PADDING - fm.horizontalAdvance(timer_str), 18, timer_str)
-        
+
         # 4. VU-метр
         bar_left = self.PADDING
         bar_right = self.WIDTH - self.PADDING
@@ -137,7 +138,6 @@ class RecordingOverlay(QWidget):
                 if not self.isVisible():
                     self.show()
                     self.raise_()
-                    self.activateWindow()
             else:
                 if self.isVisible():
                     self.hide()
