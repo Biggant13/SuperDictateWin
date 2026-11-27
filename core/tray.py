@@ -38,6 +38,7 @@ def start_tray(on_quit, sound_state, toggle_sound):
             pystray.MenuItem("👁️ Просмотр логов", lambda icon, item: dispatcher.open_log.emit()),
             pystray.MenuItem("📄 Открыть лог в блокноте", lambda icon, item: open_log_file()),
             pystray.MenuItem("📁 Папка встреч", lambda icon, item: dispatcher.open_meetings.emit()),
+            pystray.MenuItem("🎧 Расшифровать аудиофайл...", lambda icon, item: dispatcher.open_transcribe_file.emit()),
             pystray.MenuItem("📝 Распознавания", lambda icon, item: dispatcher.open_history.emit(), default=True),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("🔊 Звуковые сигналы", toggle_sound_action, checked=lambda item: sound_state[0]),

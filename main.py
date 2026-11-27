@@ -4,7 +4,7 @@ import os
 import time
 import sys
 import ctypes
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 from PySide6.QtCore import QTimer
 from core.qt_utils import get_qapp, dispatcher
 
@@ -353,6 +353,46 @@ def main():
     def open_history():
         open_history_window(None)
 
+    def open_transcribe_file():
+        meetings_dir = os.path.abspath("meetings")
+        os.makedirs(meetings_dir, exist_ok=True)
+        wav_path = QFileDialog.getOpenFileName(
+            None,
+            "Выберите аудиофайл встречи (.wav)",
+            meetings_dir,
+            "WAV файлы (*.wav);;Все файлы (*.*)",
+        )[0]
+        if not wav_path:
+            return
+        base = os.path.splitext(os.path.basename(wav_path))[0]
+        out_txt = os.path.join(meetings_dir, f"{base}_расшифровка.txt")
+        prompts_dict = cfg.get("meeting_prompts", {})
+        active_name = cfg.get("active_meeting_prompt", "По умолчанию")
+        prompt_text = prompts_dict.get(active_name, "")
+
+        QMessageBox.information(None, "Расшифровка", "Расшифровка запущена в фоновом процессе.\nНе закрывайте программу.")
+
+        def worker():
+            try:
+                from core.meeting import transcribe_meeting_file
+                # Передаем конфиг (словарь), а не объекты транскрайбера
+                transcribe_meeting_file(
+                    wav_path, out_txt,
+                    prompt_text=prompt_text,
+                    config_dict=cfg,
+                )
+                # Даем процессу пару секунд на инициализацию, потом показываем инфо
+                import time
+                time.sleep(2)
+                dispatcher.transcribe_done.emit(f"Процесс запущен. Результат будет в:\n{out_txt}")
+            except Exception as e:
+                dispatcher.transcribe_done.emit(f"ОШИБКА запуска:\n{e}")
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def on_transcribe_done(msg):
+        QMessageBox.information(None, "Расшифровка встречи", msg)
+
     def open_meetings_folder():
         import subprocess
         folder = os.path.abspath("meetings")
@@ -388,6 +428,8 @@ def main():
     # --- ПОДКЛЮЧЕНИЕ СИГНАЛОВ ТРЕЯ ---
     dispatcher.open_settings.connect(open_settings)
     dispatcher.open_history.connect(open_history)
+    dispatcher.open_transcribe_file.connect(open_transcribe_file)
+    dispatcher.transcribe_done.connect(on_transcribe_done)
     dispatcher.open_meetings.connect(open_meetings_folder)
     dispatcher.open_prompt.connect(open_prompt)
     dispatcher.open_help.connect(open_help)

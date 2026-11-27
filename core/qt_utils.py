@@ -9,6 +9,8 @@ class TrayDispatcher(QObject):
     open_prompt = Signal()
     open_help = Signal()
     open_log = Signal()
+    open_transcribe_file = Signal()
+    transcribe_done = Signal(str)
 
 dispatcher = TrayDispatcher()
 
